@@ -1,0 +1,3 @@
+Using as few non-standard modules as possible, please rewrite this AWK program as close as possible to the original.
+
+The given code is a pseudocode taken from an AWK program that {{}}. Please rewrite this code as a pseudocode interpretation of a Python class for the same purpose.
