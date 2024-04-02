@@ -4,6 +4,42 @@ import platform
 import re
 import sys
 
+class _Getch:
+    """
+    Gets a single character from standard input. Does not echo to the screen.
+    """
+    def __init__(self):
+        try:
+            self.impl = _GetchWindows()
+        except ImportError:
+            self.impl = _GetchUnix()
+
+    def __call__(self): return self.impl()
+
+class _GetchUnix:
+    def __init__(self):
+        import tty, sys
+
+    def __call__(self):
+        import sys, tty, termios
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(sys.stdin.fileno())
+            ch = sys.stdin.read(1)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        return ch
+
+
+class _GetchWindows:
+    def __init__(self):
+        import msvcrt
+
+    def __call__(self):
+        import msvcrt
+        return msvcrt.getch()
+
 class Utils:
     DS_SEP = "@@@"
     DEBUG = True # TODO figure out how to fix this
@@ -17,9 +53,9 @@ class Utils:
         Utils.DEBUG = debug
 
     @staticmethod
-    def debug_print(message):
+    def debug_print(message, context="dev_scripts_py"):
         if Utils.DEBUG:
-            print(message)
+            print(f"{context}: {message}")
 
     @staticmethod
     def stdin_open():
@@ -28,7 +64,10 @@ class Utils:
     @staticmethod
     def get_file_extension(filepath):
         # todo use os path
-        filename, extension = filepath.rsplit('.', 1)
+        if '.' in filepath:
+            filename, extension = filepath.rsplit('.', 1)
+        else:
+            extension = None
         return extension
     
     @staticmethod
@@ -97,3 +136,38 @@ class Utils:
     @staticmethod
     def get_os():
         return platform.system()
+
+    @staticmethod
+    def string_distance(s, t):
+        # create two work vectors of integer distances
+        v0 = [0] * (len(t) + 1)
+        v1 = [0] * (len(t) + 1)
+
+        # initialize v0 (the previous row of distances)
+        # this row is A[0][i]: edit distance from an empty s to t;
+        # that distance is the number of characters to append to  s to make t.
+        for i in range(len(t) + 1):
+            v0[i] = i
+
+        for i in range(len(s)):
+            # calculate v1 (current row distances) from the previous row v0
+
+            # first element of v1 is A[i + 1][0]
+            # edit distance is delete (i + 1) chars from s to match empty t
+            v1[0] = i + 1
+
+            for j in range(len(t)):
+                # calculating costs for A[i + 1][j + 1]
+                deletion_cost = v0[j + 1] + 1
+                insertion_cost = v1[j] + 1
+                substitution_cost = v0[j] if s[i] == t[j] else v0[j] + 1
+
+                v1[j + 1] = min(deletion_cost, insertion_cost, substitution_cost)
+            # copy v1 (current row) to v0 (previous row) for next iteration
+            v0,v1 = v1,v0
+        # after the last swap, the results of v1 are now in v0
+        return v0[len(t)]
+
+    @staticmethod
+    def shared_elements(list1, list2):
+       return any(item in list1 for item in list2)

@@ -9,7 +9,7 @@ os.environ["PYTHONPATH"] = "C:\\Users\\tehal"
 
 os.chdir("C:\\Users\\tehal")
 
-from scripts import cli
+from dev_scripts_py.scripts import cli
 
 if __name__ == "__main__":
     sys.exit(cli.main())

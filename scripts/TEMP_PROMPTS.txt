@@ -1,3 +1,5 @@
-Using as few non-standard modules as possible, please rewrite this AWK program as close as possible to the original.
+Using as few non-standard modules as possible, please rewrite this AWK program as close as possible to the original with clear logic.
 
-The given code is a pseudocode taken from an AWK program that {{}}. Please rewrite this code as a pseudocode interpretation of a Python class for the same purpose.
+The given code is a pseudocode taken from an AWK program that {{}}. Please rewrite this code as a pseudocode interpretation of a Python class for the same purpose with clear logic.
+
+Please rewrite this AWK block as a python function. If variables are not defined in the local context, assume they are global and do not need to be defined. Please ensure the logic is as close as possible to the original with clear logic.

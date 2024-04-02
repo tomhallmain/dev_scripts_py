@@ -59,59 +59,462 @@
 #          a  2  4
 #
 #       Note the only difference between these join types occurs in the inner part of joins.
+## TODO string distance comparison
+from collections import defaultdict
+import re
+
+from dev_scripts_py.scripts.utils import Utils
+
 class Join:
-    def __init__(self, fs1=None, fs2=None, OFS=None, merge_verbose=None, verbose=None, merge=None,
-                 debug=None, join=None, diff=None, left=None, right=None, inner=None,
-                 run_inner=None, run_right=None, skip_left=None, null_field=None, stream1_has_data=None,
-                 header_unset=None, keycount=None, keybase=None, key=None, max_nf1=None, max_nf2=None,
-                 f1nr=None, err=None):
+    SUBSEP = "***" # "\u0034" # TODO move this somewhere portable
+    join_types = ["left", "right", "inner", "outer", "diff"]
+
+    def __init__(self, data_file1, data_file2, OFS=None, header=False, verbose=None, merge=None,
+                 join="outer", null_off=None, bias_merge_keys=None, 
+                 left_label="", right_label="", inner_label="", gen_keys=False,
+                 k1=None, k2=None, max_merge_fields=None):
         self._ = None
-        self.fs1 = fs1 if fs1 else None
-        self.fs2 = fs2 if fs2 else None
-        self.FS = self.fs1
+        self.data_file1 = data_file1
+        self.data_file2 = data_file2
+        self.data_file1.get_field_separator()
+        self.data_file2.get_field_separator()
+        self.data_file1.get_data()
+        self.data_file2.get_data()
+        if OFS is None:
+            OFS = self.data_file1.field_separator
         self.OFS = self.SetOFS(OFS)
-        self.merge_verbose = merge_verbose
         self.verbose = verbose if verbose else False
-        self.merge = merge if merge else False
-        self.debug = debug if debug else False
-        self.join = join
-        self.diff = diff if diff else False
-        self.left = left if left else False
-        self.right = right if right else False
-        self.inner = inner if inner else False
-        self.run_inner = run_inner if run_inner else not self.diff
-        self.run_right = run_right if run_right else not self.left and not self.inner
-        self.skip_left = skip_left if skip_left else self.inner or self.right
-        self.null_field = null_field if null_field else None
-        self.stream1_has_data = stream1_has_data if stream1_has_data else False
-        self.header_unset = header_unset if header_unset else False
-        self.keycount = keycount if keycount else 0
-        self.keybase = keybase if keybase else None
-        self.key = key if key else None
-        self.max_nf1 = max_nf1 if max_nf1 else None
-        self.max_nf2 = max_nf2 if max_nf2 else None
-        self.f1nr = f1nr if f1nr else None
-        self.err = err if err else False
+        self.merge = True if merge else False
+        self.left, self.right, self.inner, self.outer, self.diff = [type.startswith(join) for type in Join.join_types]
+        self.join = list(filter(lambda type: type.startswith(join), Join.join_types))[0]
+        self.run_inner = not self.diff
+        self.run_right = not self.left and not self.inner
+        self.run_left = not self.inner and not self.right
+        self.null_field = "" if null_off else "<NULL>"
+        self.equal_keys = False
+        self.bias_merge = False
+        self.gen_keys = gen_keys
+
+        self.record_count = 0
+        self.index = False # TODO set this
+        self.header = header
+        self.full_bias = False # TODO set this
+        self.inherit_keys = False # TODO set this
+        self.standard_join = False # TODO set this
+        self.case_sensitive = False # TODO set this
+        self.bias_merge_exclude_keys = False # TODO set this
+        self.gen_bias_merge_keys_from_exclusion = False # set later
+        self.max_merge_fields = max_merge_fields if max_merge_fields else self.data_file1.max_nf
+        # TODO print warning to stderr if data_file2.max_nf is greater than data_file1.max_nf
+        self.K1 = {}
+        self.K2 = {}
+        self.Keys1 = {}
+        self.Keys2 = {}
+        self.BiasMergeKeys = {}
+        self.BiasMergeExcludeKeys = {}
+        self.S1 = defaultdict(list)
+        self.S2 = defaultdict(list)
+        self.SK1 = defaultdict(int)
+        self.SK2 = defaultdict(int)
+    
+
+        if verbose:
+            verbose = 1
+            file_labels = len(data_file1.name) > 0 and len(data_file2.name) > 0 and data_file1.name != data_file2.name
+
+            if not left_label:
+                left_label = (data_file1.name if file_labels else "FILE1")
+            if not right_label:
+                right_label = (data_file2.name if file_labels else "FILE2")
+                right_label = "PIPEDATA" if data_file2.is_stdin else right_label
+            if not inner_label:
+                inner_label = "BOTH"
+
+            self.left_label = left_label + self.OFS
+            self.right_label = right_label + self.OFS
+            self.inner_label = inner_label + self.OFS
+        else:
+            self.left_label = ""
+            self.right_label = ""
+            self.inner_label = ""
+
+        if merge:
+            merge = 1
+            if bias_merge_keys:
+                self.bias_merge = 1
+                _BiasMergeKeys = bias_merge_keys.split(",")
+
+                for key_index, key in enumerate(_BiasMergeKeys):
+                    if not key.isdigit():
+                        print("Bias merge keys must be integers, found key: " + key)
+                        exit(1)
+
+                    self.BiasMergeKeys[key] = key_index
+
+            if self.bias_merge_exclude_keys:
+                self.bias_merge = True
+                self.gen_bias_merge_keys_from_exclusion = True
+                _BiasMergeExcludeKeys = self.bias_merge_exclude_keys.split(",")
+
+                for key_index, key in enumerate(_BiasMergeExcludeKeys):
+                    if not key.isdigit():
+                        print("Bias merge exclude keys must be integers, found key: " + key)
+                        exit(1)
+
+                    if key in self.BiasMergeKeys:
+                        del self.BiasMergeKeys[key]
+
+                    self.BiasMergeExcludeKeys[key] = 1
+
+        else:
+            if not k1 and not k2:
+                print("Missing join key fields")
+                exit(1)
+
+            self.k1 = k1 if k1 else k2
+            self.k2 = k2 if k2 else k1
+
+            if not k1 or not k2:
+                self.equal_keys = True
+
+            Keys1 = [x.strip() for x in self.k1.split(',')]
+            Keys2 = [x.strip() for x in self.k2.split(',')]
+
+            if len(Keys1) != len(Keys2):
+                print("Keysets must be equal in length")
+                exit(1)
+
+            for i, key in enumerate(Keys1):
+                if len(key) == 0:
+                    continue
+                elif not self.gen_keys and (not key.isdigit() or len(key) > 3):
+                    self.gen_keys = True
+                else:
+                    self.Keys1[i] = int(key) - 1
+
+            for i, key in enumerate(Keys2):
+                joint_key = Keys1[i]
+
+                if len(key) == 0:
+                    continue
+                elif not self.gen_keys and (not key.isdigit() or len(key) > 3):
+                    self.gen_keys = True
+                else:
+                    self.Keys2[i] = int(key) - 1
+
+                self.K2[int(key) - 1] = joint_key
+                self.K1[joint_key] = int(key) - 1
+
+        if Utils.DEBUG:
+            Utils.debug_print(f"Running join between files {self.data_file1.name} and {self.data_file2.name} of type {self.join}", "join")
+            for i, key in enumerate(self.Keys1):
+                Utils.debug_print(f"Key for {self.data_file1.name}: {i} - {key}", "join")
+            for i, key in enumerate(self.Keys2):
+                Utils.debug_print(f"Key for {self.data_file2.name}: {i} - {key}", "join")
+
+        if not merge:
+            self.bias_merge = False
+
+        self.stream1_has_data = self.data_file1.n_rows > 0
+
+    def run(self):
+        if self.merge:
+            self._gen_merge_keys()
+        if self.data_file1.n_rows > 0:
+            self._save_first_stream()
+        self._print_matches_and_second_file_unmatched()
+        if self.run_left:
+            self._print_left_joins()
+        print(self.S1)
+        print(self.S2)
+        print(self.Keys1)
+        print(self.Keys2)
+
+    def _save_first_stream(self):
+        #if (k1 > NF) { print "Key out of range in file 1"; err = 1; exit }
+
+        if self.gen_keys:
+            self._gen_keys(False, self.data_file1)
+
+        if self.header:
+            self.data_file1.set_header()
+            self.data_file2.set_header()
+
+        line = self.data_file1.next_line()
+
+        while line:
+            keycount = 1
+            keybase = self._gen_key_string(self.Keys1, line)
+            print(f"file1 keybase: {keybase}")
+            key = f"{keybase}{keycount}"
+
+            while key in self.S1:
+                if Utils.DEBUG:
+                    Utils.debug_print(f"key was found in s1: {key}", "join")
+                keycount += 1
+                key = f"{keybase}{keycount}"
+
+            self.SK1[key] += 1
+            print(key)
+            print(self.SK1[key])
+            self.S1[key] = line
+            line = self.data_file1.next_line()
+
+    def _print_matches_and_second_file_unmatched(self):
+        # Check if key is out of range in file 2
+        if self.gen_keys:
+            self._gen_keys(True, self.data_file2)
+
+        if self.header:
+            if self.index:
+                print(self.OFS, end='')
+            print(self._gen_inner_output_string(self.data_file1.header, self.data_file2.header))
+
+        line = self.data_file2.next_line()
+
+        while line:
+            self.handle_line(line)
+            line = self.data_file2.next_line()
+
+
+    def handle_line(self, line):
+        keybase = self._gen_key_string(self.Keys2, line)
+        print(f"file2 keybase: {keybase}")
+        keycount = 1
+        key = f"{keybase}{keycount}"
+
+        # Print right joins and inner joins
+        if key in self.SK1:
+            self.SK2[key] += 1
+
+            if self.standard_join:
+                if self.run_inner:
+                    self.record_count += 1
+                    stream1_keycount = self.SK1[key]    
+                    for i in range(1, stream1_keycount + 1):
+                        self.record_count += 1
+                        if self.index:
+                            print(f'{self.record_count}{self.OFS}', end='')
+                        print(self._gen_inner_output_string(self.S1[f"{keybase}{i}"], line))
+            else:
+                if f"{keybase}{self.SK2[key]}" in self.S1:
+                    print(f"Found in S1: {keybase}{self.SK2[key]} - S1 {self.S1}")
+                    while f"{keybase}{self.SK2[key]}" in self.S1:
+                        sk2_keycount = self.SK2[key]        
+                        if self.run_inner:
+                            self.record_count += 1
+                            if self.index:
+                                print(f'{self.record_count}{self.OFS}', end='')
+                            print(self._gen_inner_output_string(self.S1[f"{keybase}{sk2_keycount}"], line))
+                        del self.S1[f"{keybase}{sk2_keycount}"]
+                        keycount += 1
+                        key = f"{keybase}{keycount}"
+                else:
+                    print(f"Not found in S1: {keybase}{self.SK2[key]} - S1 {self.S1}")
+                    if self.run_right:
+                        self.record_count += 1
+                        if self.index:
+                            print(f'{self.record_count}{self.OFS}', end='')
+                        print(self._gen_right_output_string(line))
+                    keycount += 1
+                    key = f"{keybase}{keycount}"
+        else:
+            self.S2[key] = line
+            while key in self.S2:
+                if self.run_right:
+                    self.record_count += 1
+                    if self.index:
+                        print(f'{self.record_count}{self.OFS}', end='')
+                    print(self._gen_right_output_string(self.S2[key]))
+                keycount += 1
+                key = f"{keybase}{keycount}"
+
+    def _print_left_joins(self):
+        # Print left joins
+        record_count = 0
+
+        for compound_key in self.S1.keys():
+            if self.standard_join and self.run_inner:
+                base_key = compound_key[:-2]
+                if base_key in self.SK2:
+                    continue
+
+            record_count += 1
+            if self.index:
+                print(f"{record_count}", end=" ")
+            stream2_line = self.S2[compound_key] if self.full_bias else ""
+            print(self._gen_left_output_string(self.S1[compound_key], stream2_line))
 
     def SetOFS(self, OFS):
         # implement the logic to set OFS
-        pass
-    def GenKeys(self, file2_call, nf, K1, K2, GenKeySet):
-        # implement the logic to generate Keys
-        pass
-    def GenMergeKeys(self, nf, K1, K2):
-        # implement the logic to generate Merge Keys
-        pass
+        if re.search(r'\[\:.+\:\]\{2,\}', OFS):
+            OFS = "  "
+        elif re.search(r'\[\:.+\:\]', OFS):
+            OFS = " "
+        return OFS
 
-    def GenKeyString(self, Keys):
-        # implement the logic to generate Key String
-        pass
-    def GenInnerOutputString(self, line1, line2, K2, nf1, nf2, fs1):
+    def _gen_keys(self, file2_call, data_file):
+        MissingKeys = {}
+        header_fields = data_file.current_line()
+
+        for i in range(len(self.Keys2) if file2_call else len(self.Keys1)):
+            key_pattern = self.Keys2[i] if file2_call else self.Keys1[i]
+            key_found = False
+
+            if not self.case_sensitive:
+                key_pattern = key_pattern.lower()
+
+            for f in range(len(header_fields)):
+                field = header_fields[f] if self.case_sensitive else header_fields[f].lower()
+
+                if field.startswith(key_pattern):
+                    if file2_call:
+                        self.Keys2[i] = f
+                        self.K2[f] = self.Keys1[i]
+                        self.K1[self.K2[f]] = f
+                        
+                        if self.K2[key_pattern] in self.K1:
+                            del self.K1[self.K2[key_pattern]]
+                        del self.K2[key_pattern]
+                    else:
+                        self.Keys1[i] = f
+                        self.K1[f] = f
+                        self.K2[self.K1[f]] = f
+                        del self.K1[key_pattern]
+                    key_found = True
+                    break
+
+            if not key_found:
+                MissingKeys[key_pattern] = 1
+
+        if len(MissingKeys) > 0:
+            if file2_call and self.inherit_keys:
+                n_keys = len(self.Keys2)
+
+                for i in range(n_keys):
+                    del self.K2[self.Keys2[i]]
+                    del self.Keys2[i]
+                for i in range(n_keys):
+                    key = self.Keys1[i]
+                    self.Keys2[i] = key
+                    self.K2[key] = self.K1[key]
+                return
+
+            if data_file.is_stdin:
+                filename = "right data" if file2_call else "left data"
+            else:
+                filename = data_file.name
+            print(f"join: Could not locate keys in {filename}: ", end="")
+            print(f"join: {MissingKeys}")
+            exit()
+
+    def _gen_merge_keys(self):
+        if Utils.DEBUG:
+            Utils.debug_print("Generating merge keys", "join")
+        for f in range(0, self.max_merge_fields):
+            if f in self.BiasMergeKeys:
+                continue
+            elif self.gen_bias_merge_keys_from_exclusion and f not in self.BiasMergeExcludeKeys:
+                self.BiasMergeKeys[f] = f
+                continue
+            self.K1[f] = f
+            self.K2[f] = f
+            self.Keys1[f] = f
+            self.Keys2[f] = f
+
+    def _gen_key_string(self, keys, fields):
+        s = ""
+        for k in keys.values():
+            f = fields[k]
+            if len(f) == 0:
+                f = self.null_field
+            s += f + Join.SUBSEP
+        return s
+
+    def _gen_inner_output_string(self, fields1, fields2):
         # implement the logic to generate Inner Output String
-        pass
-    def GenRightOutputString(self, line2, K1, K2, nf1, nf2, fs2):
-        # implement the logic to generate Right Output String
-        pass
-    def GenLeftOutputString(self, line1, line2, K1, nf1, nf2, fs1, fs2):
-        # implement the logic to generate Left Output String
-        pass
+        jn = self.inner_label
+        print(f"Fields1: {fields1}")
+        print(f"Fields2: {fields2}")
+
+        if self.bias_merge:
+            for f in range(self.data_file1.max_nf):
+                if f in self.BiasMergeKeys and (self.full_bias or (len(fields2[f]) > 0 and fields2[f] != self.null_field)):
+                    if self.full_bias and len(fields2[f]) == 0:
+                        jn += self.null_field
+                    else:
+                        jn += fields2[f]
+                else:
+                    jn += fields1[f]
+
+                if f < self.data_file1.max_nf - 1:
+                    jn += self.OFS
+        else:
+            nf_pad = max(self.data_file1.max_nf - len(fields1) + 1, 0)
+            jn += self.OFS.join(fields1)
+
+            for f in range(nf_pad, 1, -1):
+                jn += self.OFS
+
+        for f in range(self.data_file2.max_nf):
+            if (self.data_file1.max_nf > 0 and f in self.K2) or (self.bias_merge and f in self.BiasMergeKeys):
+                continue
+            jn += self.OFS + fields2[f]
+
+        return jn
+
+    def _gen_right_output_string(self, fields):
+        jn = self.right_label
+
+        for f in range(0, self.data_file1.max_nf):
+            if f in self.K1:
+                jn += fields[self.K1[f]]
+            elif self.bias_merge and f in self.BiasMergeKeys:
+                field = fields[f]
+                jn += self.null_field if len(field) == 0 else field
+            else:
+                jn += self.null_field
+            if f < self.data_file1.max_nf:
+                jn += self.OFS
+    
+        for f in range(0, self.data_file2.max_nf):
+            if self.data_file1.max_nf > 0 and f in self.K2:
+                continue
+            if self.bias_merge and f in self.BiasMergeKeys: 
+                continue
+            field = fields[f]
+            jn += self.OFS
+            jn += self.null_field if len(field) == 0 else field
+
+        return jn
+
+    def _gen_left_output_string(self, fields1, fields2):
+        jn = self.left_label
+
+        if self.full_bias:
+            for f in range(self.data_file1.max_nf):
+                if f in self.BiasMergeKeys:
+                    new_field = fields2[f] if f < len(fields2) else ""
+                else:
+                    new_field = fields1[f] if f < len(fields1) else ""
+    
+                if len(new_field) == 0:
+                    new_field = self.null_field
+    
+                jn += new_field
+    
+                if f < len(fields1) - 1:
+                    jn += self.OFS
+        else:
+            nf_pad = max(self.data_file1.max_nf - len(fields1) + 1, 0)
+            jn += self.OFS.join(fields1)
+ 
+            for f in range(nf_pad, 1, -1):
+                jn += self.OFS # TODO maybe null field here
+    
+        for f in range(self.data_file2.max_nf):
+            if f in self.K2 or (self.bias_merge and f in self.BiasMergeKeys):
+                continue
+            jn += self.OFS + self.null_field
+
+        return jn

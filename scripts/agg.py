@@ -8,11 +8,14 @@ class Agg:
         self.fixed_nf = fixed_nf
         self.og_off = og_off
         self.RowAggs = {}
+        self.RowAggExpr = {}
         self.ColumnAggs = {}
         self.CrossAggs = {}
         self.AllAgg = {}
         self.SearchAgg = {}
         self.ConditionalAgg = {}
+        self.IndexNA = {}
+        self.TruncVal = {}
         self.header_unset = True
         self.max_nr = 0
         self.OFS = self.set_OFS()
@@ -113,6 +116,6 @@ class Agg:
         return re.search(r'\$' + str(test_idx) + r'([^0-9]|$)', expr)
 
     def get_or_set_trunc_val(self, val):
-        if self.TruncVal.get(val):
+        if val in self.TruncVal:
             return self.TruncVal[val]
         large_val = val > 999

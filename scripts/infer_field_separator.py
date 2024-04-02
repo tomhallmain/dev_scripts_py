@@ -2,7 +2,6 @@ import re
 from collections import defaultdict
 from itertools import combinations
 
-from dev_scripts_py.scripts.DataFile import DataFile
 from dev_scripts_py.scripts.utils import Utils
 
 
@@ -59,7 +58,7 @@ class CustomFS:
         custom field separator data if matching.
         """
         Nonwords = re.split('[A-Za-z0-9(\\^\\)"\']+', line)
-        print(Nonwords)
+        Utils.debug_print(f"Nonwords: {Nonwords}", "inferfs")
         for j, word in enumerate(Nonwords):
             Chars = [char for char in word if not char in ' \n']
             for k, char in enumerate(Chars):
@@ -87,20 +86,25 @@ class CustomFS:
         self.map[fs] = fs_data
 
     def print_counts(self):
-        print("Character Frequency Counts: ", self.CharFSCount)
+        Utils.debug_print(f"Character Frequency Counts: {self.CharFSCount}", "inferfs")
 
 
 class SeparatorInference:
     MAX_TESTED_ROWS = 5000
+    EXTENSION_CSV = "csv"
+    EXTENSION_TSV = "tsv"
+    EXTENSION_PROPS = "properties"
 
-    def __init__(self, custom, high_certainty=False):
+    def __init__(self, custom, use_file_ext=True, high_certainty=False, max_rows=1000):
         self.common_fs = CommonFS()
         self.custom = custom
         self.custom_fs = CustomFS()
         self.nr = -1
-        self.n_valid_rows = -1
+        self.n_valid_rows = 0
         self.ds_sep = False
+        self.use_file_ext = use_file_ext
         self.high_certainty = high_certainty
+        self.max_rows = max_rows
 
     def infer_separator(self, data_file, max_rows=1000):
         """
@@ -108,13 +112,26 @@ class SeparatorInference:
         uses likelihood of common field separators and commonly found substrings
         in the data up to three characters.
         """
+        if self.use_file_ext:
+            extension = data_file.extension()
+            if extension == SeparatorInference.EXTENSION_CSV:
+                return ','
+            elif extension == SeparatorInference.EXTENSION_TSV:
+                return '\t'
+            elif extension == SeparatorInference.EXTENSION_PROPS:
+                return '='
+
         with data_file.read() as f:
             for row in range(SeparatorInference.MAX_TESTED_ROWS):
                 line = f.readline().strip()
+                Utils.debug_print(f"LINE:: {line}", "inferfs")
+                if not line:
+                    break
                 self.nr += 1
-                if len(line.strip()) == 0: # skip empty and whitespace lines
+                if len(line) == 0: # skip empty and whitespace lines
                     continue
                 self.n_valid_rows += 1
+                Utils.debug_print(f"n_valid_rows: {self.n_valid_rows}", "inferfs")
                 if self.n_valid_rows > max_rows:
                     break
 
@@ -141,8 +158,8 @@ class SeparatorInference:
 
             while len(qf_line):
                 # TODO fix
-                Utils.debug_print(qf_line)
-                Utils.debug_print("NF: " + str(nf))
+                Utils.debug_print(qf_line, "inferfs")
+                Utils.debug_print("NF: " + str(nf), "inferfs")
                 end = len(qf_line)
                 match = fs_data.quote_regex.search(qf_line)
 
@@ -185,9 +202,9 @@ class SeparatorInference:
 
         # Gather data about each custom field separator
         if self.custom:
-            if self.n_valid_rows == 0:
+            if self.n_valid_rows == 1:
                 self.custom_fs.test(line, False)
-            elif self.n_valid_rows == 1:
+            elif self.n_valid_rows == 2:
                 self.custom_fs.test(line, True)
             else:
                 for fs in self.custom_fs.map:
@@ -199,7 +216,7 @@ class SeparatorInference:
                         fs_data.total += nf
 
     def calculate_best(self):
-        Utils.debug_print("\n ---- common sep variance calcs ----")
+        Utils.debug_print("\n ---- common sep variance calcs ----", "inferfs")
         SumVar = defaultdict()
         FSVar = defaultdict()
         Winners = defaultdict()
@@ -235,7 +252,7 @@ class SeparatorInference:
 
             #         if chunk_weight_composite >= max_chunk_weight:
             #             max_chunk_sep = s
-            Utils.debug_print(f"FS: {fs} fs_data.total: {fs_data.total} average nf: {average_nf}")
+            Utils.debug_print(f"FS: {fs} fs_data.total: {fs_data.total} average nf: {average_nf}", "inferfs")
             if average_nf < 2:
                 continue
 
@@ -244,23 +261,23 @@ class SeparatorInference:
                 SumVar[fs] += point_var
 
             FSVar[fs] = SumVar[fs] / self.n_valid_rows
-            Utils.debug_print(6)
+            Utils.debug_print(6, "inferfs")
 
             if not FSVar[fs]:
                 NoVar[fs] = fs
                 winning_s = fs
                 Winners[fs] = fs
-                Utils.debug_print(7)
+                Utils.debug_print(7, "inferfs")
             elif not winning_s or FSVar[fs] < FSVar[winning_s]:
                 winning_s = fs
                 Winners[fs] = fs
-                Utils.debug_print(8)
+                Utils.debug_print(8, "inferfs")
     
         if self.custom:
             for fs in self.custom_fs.map:
                 fs_data = self.custom_fs.map[fs]
-                Utils.debug_print("\n ---- custom sep variance calcs ----")
-                Utils.debug_print(5)
+                Utils.debug_print("\n ---- custom sep variance calcs ----", "inferfs")
+                Utils.debug_print(5, "inferfs")
                 average_nf = fs_data.total / self.n_valid_rows
             
                 for j in range(self.n_valid_rows):
@@ -268,17 +285,17 @@ class SeparatorInference:
                     SumVar[fs] += point_var
 
                 FSVar[fs] = SumVar[fs] / self.n_valid_rows
-                Utils.debug_print(6)
+                Utils.debug_print(6, "inferfs")
 
                 if FSVar[fs] == 0:
                     NoVar[fs] = fs
                     winning_s = fs
                     Winners[fs] = fs
-                    Utils.debug_print(10)
+                    Utils.debug_print(10, "inferfs")
                 elif winning_s is None or (FSVar[fs] < FSVar[winning_s]):
                     winning_s = fs
                     Winners[fs] = fs
-                    Utils.debug_print(11)
+                    Utils.debug_print(11, "inferfs")
         
         # if (max_chunk_sep && !length(NoVar)) {
         #     if (debug) print "No zero var seps and sectional novar sep exists, override with sep "max_chunk_sep
