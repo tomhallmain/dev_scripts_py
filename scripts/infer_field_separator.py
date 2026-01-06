@@ -2,7 +2,7 @@ import re
 from collections import defaultdict
 from itertools import combinations
 
-from dev_scripts_py.scripts.utils import Utils
+from .utils import Utils
 
 
 class FSData:
@@ -223,6 +223,9 @@ class SeparatorInference:
         NoVar = defaultdict()
         winning_s = None
         winner_unsure = False
+
+        if self.n_valid_rows == 0:
+            raise Exception("No valid rows found in data to determine field separator.")
 
         for fs in Utils.COMMON_FS:
             SumVar[fs] = 0

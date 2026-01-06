@@ -13,7 +13,7 @@ import re
         # }
 
 class DiffFields:
-    def __init__(self, data_file1, data_file2, op, exclude_fields, header, summary, summary_only, summary_sort, left_label, right_label):
+    def __init__(self, data_file1, data_file2, op, exclude_fields, header, summary=None, summary_only=False, summary_sort=None, left_label=None, right_label=None):
         self.data_file1 = data_file1
         self.data_file2 = data_file2
         self.op = op
@@ -26,6 +26,7 @@ class DiffFields:
         self.diff_counter = 0
         self.left_label = left_label if left_label else ''
         self.right_label = right_label if right_label else ''
+        self.summary_row_header = None # TODO set this
         self.subtract = False
         self.add = False
         self.pc = False
@@ -33,6 +34,10 @@ class DiffFields:
         self.div = False
         self.bin = False
         self.set_switches()
+        self.DiffList = {}
+        self.ExtractVals = {}
+        self.extract_vals = False # TODO set this
+        self.NoVals = {}
 
     def set_switches(self):
         if self.op == '-':
@@ -48,6 +53,8 @@ class DiffFields:
         else:
             self.bin = True
 
+    def run(self):
+        self.process_lines()
 
     def parse_exclude_fields(self, exclude_fields_str):
         exclude_fields = []
@@ -123,7 +130,7 @@ class DiffFields:
                             list_val = f"{summary_row_header}{f}{Stream1Line[f]}{FNR[f]}{diff_val}"
                     else:
                         list_val = f"{FNR}{f}{Stream1Line[f]}{FNR[f]}{diff_val}"
-                    DiffList[diff_counter] = list_val
+                    self.DiffList[diff_counter] = list_val
                     self.diff_counter += 1
 
                 if f < len(Stream1Line) - 1:
@@ -210,7 +217,7 @@ class DiffFields:
                         else:
                             list_val = f"{FNR}{f}{Stream1Line[f]}{FNR[f]}{diff_val}"
 
-                        DiffList[diff_counter] = list_val
+                        self.DiffList[diff_counter] = list_val
                         self.diff_counter += 1
 
                     break
@@ -237,33 +244,33 @@ class DiffFields:
         return trunc_val
 
     def extract_val(self, val):
-        if val in ExtractVal:
-            return ExtractVal[val]
-        if val in NoVal:
+        if val in self.ExtractVals:
+            return self.ExtractVals[val]
+        if val in self.NoVals:
             return ""
 
         cleaned_val = val.replace(",", "")
 
-        if cleaned_val in ExtractVal:
-            return ExtractVal[cleaned_val]
-        if cleaned_val in NoVal:
+        if cleaned_val in self.ExtractVals:
+            return self.ExtractVals[cleaned_val]
+        if cleaned_val in self.NoVals:
             return ""
 
         match_obj = re.search(r'-?[0-9]*\.?[0-9]+((E|e)(\+|-)[0-9]+)?', cleaned_val)
         if match_obj:
-            if extract_vals:
+            if self.extract_vals:
                 extract_val = cleaned_val[match_obj.start():match_obj.start()+match_obj.end()]
             elif match_obj.start() > 1 or match_obj.end() < len(cleaned_val):
-                NoVal[val] = 1
+                self.NoVals[val] = 1
                 return ""
             else:
                 extract_val = cleaned_val
         else:
-            NoVal[val] = 1
+            self.NoVals[val] = 1
             return ""
 
         extract_val += 0
-        ExtractVal[val] = extract_val
+        self.ExtractVals[val] = extract_val
         return extract_val
 
 
@@ -280,6 +287,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     diff_fields = DiffFields(args.file1, args.file2, args.op, args.exclude_fields, args.header, args.summary, args.summary_sort)
-    diff_fields.diff()
+    diff_fields.run()
 
 

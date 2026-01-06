@@ -3,27 +3,29 @@ import re
 from collections import defaultdict
 
 # Set the fields as command line arguments
-fields = sys.argv[1] if len(sys.argv) > 1 else None
+fields_str = sys.argv[1] if len(sys.argv) > 1 else None
 min = 0
-Fields = []
+OFS = " " # TODO update
+fields = []
 
-if fields:
-    if re.search("[A-z]+", fields):
-        Fields.append(0)
+if fields_str:
+    if re.search("[A-z]+", fields_str):
+        fields.append(0)
     else:
-        Fields = list(map(int, re.split("[ ,|:;._]+", fields)))
+        fields = list(map(int, re.split("[ ,|:;._]+", fields_str)))
 else:
-    Fields.append(0)
-len_f = len(Fields)
+    fields.append(0)
+
+len_f = len(fields)
 _ = defaultdict(int)
-HasPrintedVals = {}
+printed_vals = []
 
 for line in sys.stdin:
     parts = line.split()
-    val = " ".join(parts[field - 1] for field in Fields)
+    val = OFS.join(parts[field - 1] for field in fields)
     _[val] += 1
 
-    if val not in HasPrintedVals and _[val] > min:
+    if val not in printed_vals and _[val] > min:
         print(val)
-        HasPrintedVals[val] = 1
+        printed_vals.append(val)
 

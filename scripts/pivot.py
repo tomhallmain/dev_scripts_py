@@ -1,10 +1,22 @@
 class Pivot:
+    COUNT = "count"
+    SUM = "sum"
+    PRODUCT = "product"
+    MEAN = "mean"
+    AGG_TYPES = [COUNT, SUM, PRODUCT, MEAN]
+
     def __init__(self, file, y_keys, x_keys, z_keys=None, agg_type=None, header=True, gen_keys=True, sort_off=False):
         self.file = file
         self.y_keys = y_keys.split(',')
         self.x_keys = x_keys.split(',')
         self.z_keys = z_keys.split(',') if z_keys else None
-        self.agg_type = agg_type
+        if agg_type:
+            selected_agg_types = [t for t in Pivot.AGG_TYPES if t.startswith(agg_type)]
+            if len(selected_agg_types) != 1:
+                raise Exception(f"Invalid agg type: {agg_type}")
+            self.agg_type = selected_agg_types[0]
+        else:
+            self.agg_type = Pivot.COUNT
         self.header = header
         self.gen_keys = gen_keys
         self.sort_off = sort_off
@@ -12,11 +24,6 @@ class Pivot:
         self.Y = {}
         self.Z = {}
         self.data = []
-
-    def read_file(self):
-        with open(self.file, 'r') as f:
-            for line in f:
-                self.data.append(line.strip().split(','))
 
     def process_header(self):
         if self.header:
@@ -39,20 +46,19 @@ class Pivot:
             self.Z[(x_str, y_str)] = self.Z.get((x_str, y_str), 0) + 1
 
     def aggregate(self):
-        if self.agg_type == 'count':
+        if self.agg_type == Pivot.COUNT:
             return
-        elif self.agg_type == 'sum':
+        elif self.agg_type == Pivot.SUM:
             for key in self.Z:
                 self.Z[key] = sum(self.Z[key])
-        elif self.agg_type == 'product':
+        elif self.agg_type == Pivot.PRODUCT:
             for key in self.Z:
                 self.Z[key] = prod(self.Z[key])
-        elif self.agg_type == 'mean':
+        elif self.agg_type == Pivot.MEAN:
             for key in self.Z:
                 self.Z[key] = sum(self.Z[key]) / len(self.Z[key])
 
     def pivot(self):
-        self.read_file()
         self.process_header()
         self.process_data()
         self.aggregate()

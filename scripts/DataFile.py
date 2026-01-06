@@ -3,8 +3,8 @@ import re
 import sys
 import tempfile
 
-from dev_scripts_py.scripts.utils import Utils
-from dev_scripts_py.scripts.infer_field_separator import SeparatorInference
+from .utils import Utils
+from .infer_field_separator import SeparatorInference
 
 class DataFile:
     CACHE = []
@@ -12,7 +12,8 @@ class DataFile:
     def __init__(self, file_path, field_separator=None):
         self.is_stdin = file_path == None or file_path == ""
         self.file_path = file_path.name if hasattr(file_path, "name") else file_path # can be type '_io.TextIOWrapper'
-        self.name = os.path.basename(self.file_path)
+        self.file_path = Utils.resolve_relative_path(self.file_path)
+        self.name = os.path.basename(self.file_path) if self.file_path else "Piped data"
         self.field_separator = field_separator
         self.output_field_separator = field_separator
         self.n_rows = 0
@@ -24,15 +25,12 @@ class DataFile:
         DataFile.CACHE.append(self)
 
     def check_and_setup(self):
-        if Utils.stdin_open():
-            if self.is_stdin:
-                raise Exception("file_path not provided but stdin was closed.")
-            else:
-                if not os.path.isfile(self.file_path):
-                    raise Exception("path provided is not a file: " + self.file_path)
-                with self.read() as f:
-                    for line in f:
-                        self.n_rows += 1
+        if not self.is_stdin:
+            if not os.path.isfile(self.file_path):
+                raise Exception("path provided is not a file: " + self.file_path)
+            with self.read() as f:
+                for line in f:
+                    self.n_rows += 1
         else:
             if not os.path.exists(Utils.TEMP_FILE_LOCATION):
                 os.makedirs(Utils.TEMP_FILE_LOCATION)
@@ -81,13 +79,16 @@ class DataFile:
         return self.current_line()
 
     def get_field_separator(self, overwrite=False, custom=False, use_file_ext=True, high_certainty=False):
+        if self.n_rows == 0:
+            self.cleanup_temp_file()
+            raise Exception("Data file has no data: " + self.name)
         if not self.field_separator or overwrite:
             self.field_separator = SeparatorInference(custom=custom,
                                                       use_file_ext=use_file_ext,
                                                       high_certainty=high_certainty).infer_separator(self)
-
         if Utils.DEBUG:
             Utils.debug_print(f"{self.name} - FS set: >{self.field_separator}<", "DataFile")
+        return self.field_separator
 
     def set_field_separator(self, field_separator):
         self.field_separator = field_separator
@@ -106,7 +107,10 @@ class DataFile:
     def cleanup_temp_file(self):
         if self.is_stdin:
             Utils.debug_print("Removing temp file: " + self.file_path, "DataFile")
-            os.remove(self.file_path)
+            try:
+                os.remove(self.file_path)
+            except Exception:
+                Utils.debug_print("Temp file was not removed: " + self.file_path, "DataFile")
 
     def transpose(self, max_nf=None):
         transposed_data = []

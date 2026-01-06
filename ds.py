@@ -1,15 +1,12 @@
 import os
 import sys
 
-sys.path.insert(0, '')
-sys.path.insert(0, "C:\\Users\\tehal")
-os.environ["PYTHONPATH"] = "C:\\Users\\tehal"  
+# Get the directory containing ds.py
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# Add the project root to Python path
+sys.path.insert(0, current_dir)
 
-# print(sys.path)
-
-os.chdir("C:\\Users\\tehal")
-
-from dev_scripts_py.scripts import cli
+from scripts import cli
 
 if __name__ == "__main__":
     sys.exit(cli.main())

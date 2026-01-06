@@ -1,7 +1,6 @@
 import os
 import re
 import subprocess
-from collections import defaultdict
 
 class GitBranchPurger:
     def __init__(self, base_dir):

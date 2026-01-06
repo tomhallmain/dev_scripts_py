@@ -42,11 +42,39 @@ class _GetchWindows:
 
 class Utils:
     DS_SEP = "@@@"
-    DEBUG = True # TODO figure out how to fix this
+    DEBUG = True
     TEMP_FILE_LOCATION = "/tmp/dev_scripts_py/"
     COMMON_FS = [' ', '\t', ',', ';', ':', '|']
     SINGLE_QUOTE = "'"
     DOUBLE_QUOTE = "\""
+    START_DIR = None
+
+    @staticmethod
+    def set_start_dir(start_dir):
+        Utils.START_DIR = start_dir
+
+    @staticmethod
+    def resolve_relative_path(path, return_abs_path=False):
+        if path is None:
+            return path
+        if os.path.abspath(path) == path:
+            if return_abs_path:
+                return os.path.normpath(os.path.abspath(path))
+            return os.path.normpath(path)
+        if Utils.START_DIR is None:
+            print("No start dir set, relative paths may be incorrect.") # TODO error print or just better implementation
+            if return_abs_path:
+                return os.path.normpath(os.path.abspath(path))
+            return os.path.normpath(path)
+        if path.startswith("."):
+            if path.startswith(".."):
+                raise Exception("Unhandled path, use absolute path instead: " + path)
+            path = os.path.normpath(Utils.START_DIR + path[1:])
+        else:
+            path = os.path.normpath(os.path.join(Utils.START_DIR, path))
+        if return_abs_path:
+            return os.path.normpath(os.path.abspath(path))
+        return path
 
     @staticmethod
     def set_debug(debug=False):
@@ -59,7 +87,7 @@ class Utils:
 
     @staticmethod
     def stdin_open():
-        return sys.stdin.isatty()
+        return sys.stdin.isatty() # TODO not working as expected
 
     @staticmethod
     def get_file_extension(filepath):
@@ -169,5 +197,105 @@ class Utils:
         return v0[len(t)]
 
     @staticmethod
+    def identify_string_differences(s, t, unicode_escape=False, debug=False):
+        if debug:
+            print(f"Expected:\n{s}")
+            print(f"Actual:\n{t}")
+        len_s = len(s)
+        len_t = len(t)
+        if len_s == 0:
+            if len_t == 0:
+                return None
+            return f"EXPECTED:\n[]\nACTUAL:\n[{t}]"
+        elif len_t == 0:
+            return f"EXPECTED:\n[{s}]\nACTUAL:\n[]"
+        out_s = ""
+        out_t = ""
+        max_len = max(len_s, len_t)
+        has_found_one_difference = False
+        has_found_difference = False
+        to_close_s = False
+        to_close_t = False
+        for i in range(max_len):
+            c_s = None
+            c_t = None
+            if i < len_s:
+                c_s = s[i]
+            if i < len_t:
+                c_t = t[i]
+            if c_s is not None and c_t is not None:
+                if c_s == c_t:
+                    if has_found_difference:
+                        has_found_difference = False
+                        out_s += "]"
+                        out_t += "]"
+                    out_s += c_s
+                    out_t += c_t
+                else:
+                    if not has_found_difference:
+                        has_found_difference = True
+                        has_found_one_difference = True
+                        out_s += "["
+                        out_t += "["
+                    if unicode_escape:
+                        out_s += repr(c_s)
+                        out_t += repr(c_t)
+                    else:
+                        out_s += c_s
+                        out_t += c_t
+            elif c_s is not None:
+                if not has_found_difference:
+                    has_found_difference = True
+                    has_found_one_difference = True
+                    to_close_s = True
+                    out_s += "["
+                if unicode_escape:
+                    out_s += repr(c_s)
+                else:
+                    out_s += c_s
+            elif c_t is not None:
+                if not has_found_difference:
+                    has_found_difference = True
+                    has_found_one_difference = True
+                    to_close_t = True
+                    out_t += "["
+                if unicode_escape:
+                    out_t += repr(c_t)
+                else:
+                    out_t += c_t
+
+        if not has_found_one_difference:
+            Utils.debug_print("No differences were found between the two strings!", "utils")
+            return None
+
+        if to_close_s:
+            out_s += "]"
+        if to_close_t:
+            out_t += "]"
+
+        return f"EXPECTED:\n{out_s}\nACTUAL:\n{out_t}"
+
+    @staticmethod
+    def longest_common_substring(str1, str2):
+        m = [[0] * (1 + len(str2)) for _ in range(1 + len(str1))]
+        longest, x_longest = 0, 0
+        for x in range(1, 1 + len(str1)):
+            for y in range(1, 1 + len(str2)):
+                if str1[x - 1] == str2[y - 1]:
+                    m[x][y] = m[x - 1][y - 1] + 1
+                    if m[x][y] > longest:
+                        longest = m[x][y]
+                        x_longest = x
+                else:
+                    m[x][y] = 0
+        return str1[x_longest - longest: x_longest]
+
+    @staticmethod
     def shared_elements(list1, list2):
        return any(item in list1 for item in list2)
+
+    @staticmethod
+    def get_list_from_string(s, sep=","):
+        if s is None or s.strip() == "":
+            return []
+        return [x.strip() for x in s.split(sep)]
