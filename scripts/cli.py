@@ -8,6 +8,7 @@ from scripts.field_counts import FieldsCounter
 from scripts.infer_field_separator import SeparatorInference
 from scripts.index import index_main
 from scripts.join import Join
+from scripts.move import move_main
 from scripts.transpose import DataTransposer
 from scripts.utils import Utils
 
@@ -70,6 +71,32 @@ def dups(dirpath=".", select_deepest=False, match_dir=False, no_recurse=False,
     dups_main(dirpath, select_deepest=select_deepest, match_dir=match_dir, recursive=not no_recurse, 
               exclude_dir_string=exclude_dirs, preferred_delete_dirs_string=preferred_delete_dirs,
               save_filedata=save_filedata, no_overwrite_filedata=no_overwrite_filedata)
+
+@cli.command()
+@click.argument('source')
+@click.argument('target')
+@click.option('--filter', '-f', default=None, help="Filter pattern (tag like [video] or glob like *.mp4)")
+def move(source, target, filter):
+    """
+    Move files or directories from source to target.
+    Supports filtering with tags ([video], [audio], [document], [text], [bin]) or glob patterns.
+    """
+    source = Utils.resolve_relative_path(source)
+    target = Utils.resolve_relative_path(target)
+    move_main(source, target, filter)
+
+@cli.command()
+@click.argument('source')
+@click.argument('target')
+@click.option('--filter', '-f', default=None, help="Filter pattern (tag like [video] or glob like *.mp4)")
+def copy(source, target, filter):
+    """
+    Copy files or directories from source to target.
+    Supports filtering with tags ([video], [audio], [document], [text], [bin]) or glob patterns.
+    """
+    source = Utils.resolve_relative_path(source)
+    target = Utils.resolve_relative_path(target)
+    move_main(source, target, filter, copy=True)
 
 @cli.command()
 @click.argument('filepath', type=click.File(), required=False)
