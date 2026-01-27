@@ -4,10 +4,75 @@
 # or operating system, you probably want to add a global ignore instead:
 #   git config --global core.excludesfile '~/.gitignore_global'
 
+# OS and Editor files
 *.DS_Store
 *.swp
+*.swo
+*~
+
+# Environment variables
+.env
+
+# Build and distribution
 build
 dist
-__pycache__
-*__pycache__
-tests/ds_gexec_from_commands_tests.sh
+*.egg-info/
+*.egg
+.eggs/
+*.so
+*.pyd
+.installed.cfg
+*.manifest
+
+# Python cache
+__pycache__/
+*__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+*.cover
+*.log
+
+# Type checking and linting
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+.pytype/
+
+# IDE
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Temporary files
+temp_*
+tmp/
+*.tmp
+*.bak
+*.swp
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pip
+pip-log.txt
+pip-delete-this-directory.txt
