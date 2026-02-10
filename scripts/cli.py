@@ -8,6 +8,7 @@ from scripts.field_counts import FieldsCounter
 from scripts.infer_field_separator import SeparatorInference
 from scripts.index import index_main
 from scripts.join import Join
+from scripts.kill_port import kill_port_main
 from scripts.move import move_main
 from scripts.transpose import DataTransposer
 from scripts.utils import Utils
@@ -97,6 +98,23 @@ def copy(source, target, filter):
     source = Utils.resolve_relative_path(source)
     target = Utils.resolve_relative_path(target)
     move_main(source, target, filter, copy=True)
+
+@cli.command(name="kill_port")
+@click.argument('port', type=int)
+@click.option('--force', '-f', is_flag=True, help="Force-kill processes immediately (SIGKILL / taskkill /F)")
+@click.option('--dry-run', '-n', is_flag=True, help="Show what would be killed without actually killing")
+def kill_port(port, force, dry_run):
+    """
+    Kill all processes bound to PORT.
+
+    Scans for every process with a socket on the given port (listeners first,
+    then remaining connections) and terminates them.  Works on Windows
+    (netstat + taskkill) and Unix (lsof / ss + signals).
+
+    Example:  ds . kill_port 8188
+    """
+    kill_port_main(port, force=force, dry_run=dry_run)
+
 
 @cli.command()
 @click.argument('filepath', type=click.File(), required=False)
