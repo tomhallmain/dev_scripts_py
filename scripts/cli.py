@@ -79,6 +79,17 @@ class AliasedGroup(click.Group):
                 cmd_name = canonical
         return cmd_name, cmd, args
 
+    def command(self, *args, aliases=None, **kwargs):
+        decorator = super().command(*args, **kwargs)
+        if aliases:
+            def wrapper(fn):
+                cmd = decorator(fn)
+                for alias in aliases:
+                    self.add_alias(alias, cmd.name)
+                return cmd
+            return wrapper
+        return decorator
+
     def get_aliases_for(self, cmd_name):
         return self._reverse_aliases.get(cmd_name, [])
 
@@ -263,7 +274,7 @@ def index(filepath, field_sep, header):
     data_file.get_field_separator()
     index_main(data_file, header)
 
-@cli.command()
+@cli.command(aliases=["t"])
 @click.argument('file', type=click.File(), required=False)
 @click.option('--field-sep', '-s', default=None)
 @click.option('--ofs', default=None)
@@ -277,7 +288,7 @@ def transpose(filepath, field_sep, ofs):
     DataTransposer(data_file, ofs=ofs).transpose()
 
 
-@cli.command()
+@cli.command(aliases=["jn"])
 @click.argument('file1', type=click.File(), required=True)
 @click.argument('file2', type=click.File(), required=False)
 @click.option('--field-sep', '-s', default=None)
@@ -344,7 +355,7 @@ def field_counts(file, field_sep, ofs, fields="0", min=1, only_vals=False):
 # Git commands
 # ---------------------------------------------------------------------------
 
-@cli.command(name="git_status")
+@cli.command(name="git_status", aliases=["gs"])
 @click.argument('base_dir', default=None, required=False)
 @click.option('--track-non-repos', '-t', is_flag=True, help="Also list non-repository directories")
 def git_status(base_dir, track_non_repos):
@@ -363,7 +374,7 @@ def git_status(base_dir, track_non_repos):
     gs.print_git_status()
 
 
-@cli.command(name="git_branch")
+@cli.command(name="git_branch", aliases=["gb"])
 @click.argument('base_dir', default=None, required=False)
 def git_branch(base_dir):
     """
@@ -388,7 +399,7 @@ def git_branch(base_dir):
     gr.print_branches()
 
 
-@cli.command(name="git_purge_local")
+@cli.command(name="git_purge_local", aliases=["gpl"])
 @click.argument('base_dir')
 @click.argument('branches', nargs=-1, required=True)
 @wip
@@ -618,7 +629,7 @@ def hist():
 # Stub commands — incomplete ports, hidden from `ds commands` by default
 # ---------------------------------------------------------------------------
 
-@cli.command(name="diff_fields")
+@cli.command(name="diff_fields", aliases=["df"])
 @click.argument('file1', type=click.Path(exists=True))
 @click.argument('file2', type=click.Path(exists=True))
 @click.argument('op', default='-')
@@ -658,7 +669,7 @@ def reo():
     click.echo("Not yet ported.")
 
 
-@cli.command(name="sortm")
+@cli.command(name="sortm", aliases=["s"])
 @stub
 def sortm():
     """
@@ -736,7 +747,7 @@ def shape():
     shape_main()
 
 
-@cli.command(name="field_uniques")
+@cli.command(name="field_uniques", aliases=["u"])
 @click.argument('fields_spec', default="0")
 @stub
 def field_uniques(fields_spec):
@@ -815,7 +826,7 @@ def inferk():
     click.echo("Not yet ported (script has mixed AWK/Python syntax).")
 
 
-@cli.command(name="grepvi")
+@cli.command(name="grepvi", aliases=["gvi"])
 @click.argument('search')
 @click.argument('target', default=".", required=False)
 @click.option('--edit-all', '-a', is_flag=True, help="Open all matching files in editor")
@@ -849,21 +860,6 @@ def vi_cmd(search, directory, edit_all, no_edit):
     from scripts.grep_edit import find_and_edit
     directory = Utils.resolve_relative_path(directory)
     find_and_edit(search, directory, edit_all=edit_all, edit=not no_edit)
-
-
-# ---------------------------------------------------------------------------
-# Aliases — short names that resolve to the canonical command
-# ---------------------------------------------------------------------------
-
-cli.add_alias('df', 'diff_fields')
-cli.add_alias('gb', 'git_branch')
-cli.add_alias('gpl', 'git_purge_local')
-cli.add_alias('gs', 'git_status')
-cli.add_alias('gvi', 'grepvi')
-cli.add_alias('jn', 'join')
-cli.add_alias('s', 'sortm')
-cli.add_alias('t', 'transpose')
-cli.add_alias('u', 'field_uniques')
 
 
 def main():
