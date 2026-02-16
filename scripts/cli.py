@@ -683,38 +683,8 @@ def prod(files):
 
     Example:  ds . prod set_a.txt set_b.txt
     """
-    files = [Utils.resolve_relative_path(f) for f in files]
-    MSets = {}
-    MSetLen = {}
-    set_base = 0
-    prev_file = None
-    for filename in files:
-        with open(filename, 'r') as f:
-            if filename != prev_file:
-                set_base += 1
-            prev_file = filename
-            MSetLen[set_base] = 0
-            for line in f:
-                MSetLen[set_base] += 1
-                MSets[(set_base, MSetLen[set_base])] = line.strip()
-
-    msets_len = set_base
-    def _print_product(start, max_val, mult, max_mult, advance_val=None):
-        iteration = max_mult - mult + 1
-        init_adv = advance_val
-        dec_mult = mult - 1
-        for i in range(start, max_val + 1):
-            if iteration < 2:
-                advance_val = MSets[(iteration, i)]
-            else:
-                advance_val = str(init_adv) + ' ' + str(MSets[(iteration, i)])
-            if mult > 1:
-                _print_product(1, MSetLen[iteration + 1], dec_mult, max_mult, advance_val)
-            else:
-                click.echo(advance_val)
-
-    if msets_len and MSetLen.get(1):
-        _print_product(1, MSetLen[1], msets_len, msets_len)
+    from scripts.product import product_main
+    product_main([Utils.resolve_relative_path(f) for f in files])
 
 
 @cli.command(name="shape")
@@ -725,62 +695,8 @@ def shape():
 
     Example:  cat data.txt | ds . shape
     """
-    import re
-    from collections import defaultdict
-
-    tty_size = 100
-    span = 15
-    measures = '_length_'
-    shape_marker = '+'
-
-    measures = measures.split(',')
-    shape_marker_string = shape_marker * tty_size
-
-    buckets = 0
-    bucket_discriminant = 0
-    J = defaultdict(int)
-    MaxJ = defaultdict(int)
-    MaxOccurrences = defaultdict(int)
-    TotalOccurrences = defaultdict(int)
-    MatchLines = defaultdict(int)
-    _ = {}
-    fields_list = ['0']
-
-    for lineno, line in enumerate(sys.stdin, start=1):
-        bucket_discriminant = lineno % span
-        if bucket_discriminant == 0:
-            buckets += 1
-        for f_i, field in enumerate(fields_list, start=1):
-            for m_i, measure in enumerate(measures, start=1):
-                key = (f_i, m_i)
-                value = len(re.findall(measure, line)) if measure != '_length_' else len(line)
-                occurrences = max(value, 0)
-                if occurrences > MaxOccurrences[key]:
-                    MaxOccurrences[key] = occurrences
-                TotalOccurrences[key] += occurrences
-                m = max(occurrences, 0)
-                J[key] += m
-                if m:
-                    MatchLines[key] += 1
-                if bucket_discriminant == 0:
-                    if J[key] > MaxJ[key]:
-                        MaxJ[key] = J[key]
-                    _[key, lineno // span] = J[key]
-                    J[key] = 0
-
-    if not any(MaxJ.values()):
-        click.echo("Data not found with given parameters")
-        return
-
-    for f_i, field in enumerate(fields_list, start=1):
-        click.echo(f"stats from field: {field}")
-        for m_i, measure in enumerate(measures, start=1):
-            key = (f_i, m_i)
-            click.echo(f'lines with "{measure}": {MatchLines[key]}')
-            click.echo(f'occurrence: {TotalOccurrences[key]}')
-            avg = TotalOccurrences[key] / lineno if lineno else 0
-            click.echo(f'average: {avg}')
-            click.echo(f'approx var: {(MaxOccurrences[key] - avg) ** 2}')
+    from scripts.shape import shape_main
+    shape_main()
 
 
 @cli.command(name="field_uniques")
@@ -792,28 +708,8 @@ def field_uniques(fields_spec):
 
     Example:  cat data.txt | ds . field_uniques 1,2
     """
-    import re
-    from collections import defaultdict
-
-    fields = []
-    if re.search("[A-z]+", fields_spec):
-        fields.append(0)
-    else:
-        fields = list(map(int, re.split("[ ,|:;._]+", fields_spec)))
-    if not fields:
-        fields.append(0)
-
-    OFS = " "
-    counts = defaultdict(int)
-    printed_vals = []
-
-    for line in sys.stdin:
-        parts = line.split()
-        val = OFS.join(parts[field - 1] for field in fields if field - 1 < len(parts))
-        counts[val] += 1
-        if val not in printed_vals and counts[val] > 0:
-            click.echo(val)
-            printed_vals.append(val)
+    from scripts.field_uniques import field_uniques_main
+    field_uniques_main(fields_spec)
 
 
 @cli.command(name="enti")
