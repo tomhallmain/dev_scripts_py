@@ -48,7 +48,42 @@ def stub(fn):
     return wrapper
 
 
-@click.group(name="ds")
+class AliasedGroup(click.Group):
+    """A Click group that supports short aliases for commands."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._aliases = {}          # alias -> canonical name
+        self._reverse_aliases = {}  # canonical name -> list of aliases
+
+    def add_alias(self, alias, cmd_name):
+        self._aliases[alias] = cmd_name
+        self._reverse_aliases.setdefault(cmd_name, []).append(alias)
+
+    def get_command(self, ctx, cmd_name):
+        rv = super().get_command(ctx, cmd_name)
+        if rv is not None:
+            return rv
+        canonical = self._aliases.get(cmd_name)
+        if canonical is not None:
+            return super().get_command(ctx, canonical)
+        return None
+
+    def resolve_command(self, ctx, args):
+        # Override so Click's error messages show the canonical name
+        cmd_name, cmd, args = super().resolve_command(ctx, args)
+        if cmd is None and args:
+            canonical = self._aliases.get(cmd_name)
+            if canonical:
+                cmd = super().get_command(ctx, canonical)
+                cmd_name = canonical
+        return cmd_name, cmd, args
+
+    def get_aliases_for(self, cmd_name):
+        return self._reverse_aliases.get(cmd_name, [])
+
+
+@click.group(name="ds", cls=AliasedGroup)
 @click.argument('startpath')
 @click.option('--debug/--no-debug', default=False)
 def cli(startpath, debug):
@@ -81,16 +116,18 @@ def commands(ctx, show_all):
             hidden_count += 1
             continue
         help_text = cmd.get_short_help_str(limit=80)
-        visible.append((name, help_text, is_stub))
+        aliases = group.get_aliases_for(name) if hasattr(group, 'get_aliases_for') else []
+        visible.append((name, aliases, help_text, is_stub))
 
     if not visible:
         click.echo("No commands available.")
         return
 
-    max_len = max(len(name) for name, _, _ in visible)
-    for name, help_text, is_stub in visible:
+    max_len = max(len(name) for name, _, _, _ in visible)
+    for name, aliases, help_text, is_stub in visible:
+        alias_str = click.style(f" ({', '.join(aliases)})", fg='cyan') if aliases else ""
         tag = click.style(" [STUB]", fg='red') if is_stub else ""
-        click.echo(f"  {name:<{max_len}}  {help_text}{tag}")
+        click.echo(f"  {name:<{max_len}}{alias_str}  {help_text}{tag}")
 
     if hidden_count and not show_all:
         click.echo(click.style(
@@ -812,6 +849,21 @@ def vi_cmd(search, directory, edit_all, no_edit):
     from scripts.grep_edit import find_and_edit
     directory = Utils.resolve_relative_path(directory)
     find_and_edit(search, directory, edit_all=edit_all, edit=not no_edit)
+
+
+# ---------------------------------------------------------------------------
+# Aliases — short names that resolve to the canonical command
+# ---------------------------------------------------------------------------
+
+cli.add_alias('df', 'diff_fields')
+cli.add_alias('gb', 'git_branch')
+cli.add_alias('gpl', 'git_purge_local')
+cli.add_alias('gs', 'git_status')
+cli.add_alias('gvi', 'grepvi')
+cli.add_alias('jn', 'join')
+cli.add_alias('s', 'sortm')
+cli.add_alias('t', 'transpose')
+cli.add_alias('u', 'field_uniques')
 
 
 def main():
