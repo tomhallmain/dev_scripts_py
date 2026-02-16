@@ -30,4 +30,5 @@ def print_staggered(file_name, stag_size=5, tty_size=None):
                 stag_space += stag
             print("")
 
-print_staggered('same_file')
+if __name__ == "__main__":
+    print_staggered('same_file')

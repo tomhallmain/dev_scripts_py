@@ -1,5 +1,7 @@
 import click
+import functools
 import os
+import sys
 
 from scripts.case import TextCaseConverter
 from scripts.DataFile import DataFile
@@ -13,6 +15,39 @@ from scripts.move import move_main
 from scripts.transpose import DataTransposer
 from scripts.utils import Utils
 
+
+def wip(fn):
+    """Mark a Click command callback as work-in-progress."""
+    original_doc = fn.__doc__ or ""
+    fn.__doc__ = original_doc.rstrip() + "\n\n    [WIP] Port in progress — may not function correctly."
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        click.echo(click.style(
+            "Warning: this command is a work-in-progress port and may not function correctly.",
+            fg='yellow',
+        ))
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+def stub(fn):
+    """Mark a Click command callback as a stub (incomplete port).
+
+    Stubs are hidden from ``ds commands`` unless ``--all`` is passed.
+    """
+    original_doc = fn.__doc__ or ""
+    fn.__doc__ = original_doc.rstrip() + "\n\n    [STUB] Not yet ported — implementation incomplete."
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        click.echo(click.style(
+            "Warning: this command is a stub — the port is incomplete and may not work at all.",
+            fg='red',
+        ))
+        return fn(*args, **kwargs)
+    wrapper._ds_stub = True
+    return wrapper
+
+
 @click.group(name="ds")
 @click.argument('startpath')
 @click.option('--debug/--no-debug', default=False)
@@ -23,8 +58,9 @@ def cli(startpath, debug):
         click.echo('dev_scripts_py: Debug mode is on')
 
 @cli.command()
+@click.option('--all', '-a', 'show_all', is_flag=True, help="Include stub (incomplete) commands")
 @click.pass_context
-def commands(ctx):
+def commands(ctx, show_all):
     """
     List all available commands.
     """
@@ -33,22 +69,50 @@ def commands(ctx):
     if not cmd_names:
         click.echo("No commands available.")
         return
-    max_len = max(len(name) for name in cmd_names)
+
+    visible = []
+    hidden_count = 0
     for name in cmd_names:
         cmd = group.get_command(ctx.parent, name)
-        help_text = cmd.get_short_help_str(limit=80) if cmd else ""
-        click.echo(f"  {name:<{max_len}}  {help_text}")
+        if not cmd:
+            continue
+        is_stub = getattr(cmd.callback, '_ds_stub', False)
+        if is_stub and not show_all:
+            hidden_count += 1
+            continue
+        help_text = cmd.get_short_help_str(limit=80)
+        visible.append((name, help_text, is_stub))
+
+    if not visible:
+        click.echo("No commands available.")
+        return
+
+    max_len = max(len(name) for name, _, _ in visible)
+    for name, help_text, is_stub in visible:
+        tag = click.style(" [STUB]", fg='red') if is_stub else ""
+        click.echo(f"  {name:<{max_len}}  {help_text}{tag}")
+
+    if hidden_count and not show_all:
+        click.echo(click.style(
+            f"\n  ({hidden_count} stub command(s) hidden — use ds commands --all to show)",
+            fg='bright_black',
+        ))
 
 @cli.command()
+@wip
 def agg():
     """
     Aggregate field-based text data.
     """
-    pass
+    click.echo("Not yet implemented.")
 
 @cli.command()
+@wip
 def asgn():
-    pass
+    """
+    Print lines matching assignment pattern.
+    """
+    click.echo("Not yet implemented.")
 
 @cli.command()
 @click.argument('tocase', default="pc")
@@ -65,11 +129,12 @@ def case(tocase, text, field_sep):
     TextCaseConverter(tocase).recase(data_file)
 
 @cli.command()
+@wip
 def cd():
     """
     Change to a different directory in context.
     """
-    pass
+    click.echo("Not yet implemented.")
 
 @cli.command(name="dup_files")
 @click.argument('dirpath')
@@ -238,8 +303,536 @@ def field_counts(file, field_sep, ofs, fields="0", min=1, only_vals=False):
 #     index_main(data_file, header)
 
 
-# Add other functions here following the same pattern
-# ...
+# ---------------------------------------------------------------------------
+# Git commands
+# ---------------------------------------------------------------------------
+
+@cli.command(name="git_status")
+@click.argument('base_dir', default=None, required=False)
+@click.option('--track-non-repos', '-t', is_flag=True, help="Also list non-repository directories")
+def git_status(base_dir, track_non_repos):
+    """
+    Show git status for all repos under a directory.
+
+    Defaults to the home directory when BASE_DIR is omitted.
+
+    Example:  ds . git_status ~/repos
+    """
+    from scripts.all_repo_git_status import GitStatus
+    if base_dir:
+        base_dir = Utils.resolve_relative_path(base_dir)
+    gs = GitStatus(base_dir, track_non_repos=track_non_repos)
+    gs.get_git_repos()
+    gs.print_git_status()
+
+
+@cli.command(name="git_branch")
+@click.argument('base_dir', default=None, required=False)
+def git_branch(base_dir):
+    """
+    List branches for all local git repos.
+
+    Scans the home directory (or BASE_DIR) for git repositories and prints
+    their branches.
+
+    Example:  ds . git_branch
+    """
+    from scripts.all_repo_git_branch import GitRepo
+    gr = GitRepo()
+    if base_dir:
+        import os as _os
+        base_dir = Utils.resolve_relative_path(base_dir)
+        gr.home_dirs = [
+            _os.path.join(base_dir, d)
+            for d in _os.listdir(base_dir)
+            if _os.path.isdir(_os.path.join(base_dir, d))
+        ]
+    gr.find_repos()
+    gr.print_branches()
+
+
+@cli.command(name="git_purge_local")
+@click.argument('base_dir')
+@click.argument('branches', nargs=-1, required=True)
+@wip
+def git_purge_local(base_dir, branches):
+    """
+    Purge specified branches from all local git repos under BASE_DIR.
+
+    Example:  ds . git_purge_local ~/repos feature-old bugfix-stale
+    """
+    from scripts.purge_local_branches import GitBranchPurger
+    base_dir = Utils.resolve_relative_path(base_dir)
+    purger = GitBranchPurger(base_dir)
+    purger.purge_branches(list(branches))
+
+
+# ---------------------------------------------------------------------------
+# Conda commands
+# ---------------------------------------------------------------------------
+
+@cli.command(name="conda_check")
+@click.argument('packages', nargs=-1, required=True)
+def conda_check(packages):
+    """
+    Check which conda environments have given packages installed.
+
+    Example:  ds . conda_check numpy pandas scikit-learn
+    """
+    from scripts.conda_check_packages import main as _conda_check_main
+    old_argv = sys.argv
+    sys.argv = ['conda_check'] + list(packages)
+    try:
+        _conda_check_main()
+    finally:
+        sys.argv = old_argv
+
+
+@cli.command(name="conda_envs")
+@click.option('--json', 'as_json', is_flag=True, help="Output JSON instead of a table")
+@click.option('--sort', type=click.Choice(['name', 'size', 'python']), default='python', help="Sort column")
+def conda_envs(as_json, sort):
+    """
+    List conda environments with Python version, size, and package count.
+
+    Example:  ds . conda_envs --sort size
+    """
+    from scripts.conda_env_details import main as _conda_envs_main
+    argv = []
+    if as_json:
+        argv.append('--json')
+    argv.extend(['--sort', sort])
+    _conda_envs_main(argv)
+
+
+# ---------------------------------------------------------------------------
+# Data comparison / analysis commands
+# ---------------------------------------------------------------------------
+
+@cli.command()
+@click.argument('file1', type=click.Path(exists=True))
+@click.argument('file2', type=click.Path(exists=True))
+@click.option('--key', '-k', type=int, default=None, help="Key field index (1-based) for matching")
+@click.option('--fs', '-s', default=None, help="Field separator for both files")
+def matches(file1, file2, key, fs):
+    """
+    Get matching records between two files.
+
+    Example:  ds . matches data1.csv data2.csv --key 1
+    """
+    from scripts.matches import FileComparator
+    file1 = Utils.resolve_relative_path(file1)
+    file2 = Utils.resolve_relative_path(file2)
+    comparator = FileComparator(file1, file2, fs=fs, key=key)
+    comparator.compare_files()
+    comparator.print_matches()
+
+
+@cli.command(name="power")
+@click.argument('file', type=click.Path(exists=True))
+@click.option('--min', '-m', 'min_count', default=0, help="Minimum occurrence count")
+@click.option('--return-fields', '-r', is_flag=True, help="Return field proportions instead of counts")
+@click.option('--invert', '-i', is_flag=True, help="Invert the min filter")
+@click.option('--choose', '-c', type=int, default=None, help="Restrict combination size")
+def power(file, min_count, return_fields, invert, choose):
+    """
+    Combinatorial frequency analysis of data field values.
+
+    Example:  ds . power data.txt --min 2 --choose 2
+    """
+    from scripts.power import DataAnalyzer
+    file = Utils.resolve_relative_path(file)
+    analyzer = DataAnalyzer(file, min=min_count, return_fields=return_fields, invert=invert, choose=choose)
+    analyzer.analyze()
+    analyzer.print_results()
+
+
+@cli.command(name="random")
+@click.argument('mode', default="number")
+@click.argument('text', default="", required=False)
+def random_cmd(mode, text):
+    """
+    Generate a random number or randomize text.
+
+    MODE is 'number' (default) or 'text'.
+
+    Example:  ds . random text "Hello World"
+    """
+    from scripts.randomize import randomize_text
+    randomize_text(mode, text)
+
+
+@cli.command(name="unicode")
+@click.argument('conversion', default="codepoint", type=click.Choice(['codepoint', 'hex', 'octet']))
+def unicode_cmd(conversion):
+    """
+    Convert UTF-8 unicode representations from stdin.
+
+    CONVERSION is 'codepoint' (default), 'hex', or 'octet'.
+
+    Example:  echo "data" | ds . unicode hex
+    """
+    from scripts.unicode import Converter
+    converter = Converter()
+    converter.set_conversion_type(conversion)
+    converter.convert_input(sys.stdin)
+
+
+# ---------------------------------------------------------------------------
+# Graph / visualization commands
+# ---------------------------------------------------------------------------
+
+@cli.command()
+@click.option('--print-bases', '-p', is_flag=True, help="Include base nodes in output")
+@wip
+def graph(print_bases):
+    """
+    Extract graph relationships from DAG base data (reads from stdin).
+
+    Input: lines of "child parent" pairs on stdin.
+
+    Example:  cat edges.txt | ds . graph --print-bases
+    """
+    from scripts.graph import backtrace
+    shoots = {}
+    bases = {}
+    cycles = {}
+
+    for line in sys.stdin:
+        line = line.strip()
+        if line:
+            parts = line.split()
+            if len(parts) > 1:
+                shoots[parts[0]] = parts[1]
+                bases[parts[1]] = 1
+            elif len(parts) == 1:
+                bases[parts[0]] = 1
+
+    if print_bases:
+        for base in bases:
+            if base not in shoots:
+                click.echo(base)
+
+    for shoot in shoots:
+        if shoots[shoot] and (print_bases or shoot not in bases):
+            if shoot == shoots[shoot]:
+                cycles[shoot] = 1
+                continue
+            click.echo(backtrace(shoot, shoots[shoot], shoots))
+
+    if cycles:
+        click.echo(f"WARNING: {len(cycles)} cycles found!")
+        for cycle in cycles:
+            click.echo(f"CYCLENODE__ {cycle}")
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument('filepath', type=click.Path(exists=True))
+@click.option('--stag-size', '-s', default=5, help="Number of spaces to indent per field")
+@wip
+def stagger(filepath, stag_size):
+    """
+    Print tabular data in staggered rows.
+
+    Example:  ds . stagger data.txt --stag-size 4
+    """
+    from scripts.stagger import print_staggered
+    filepath = Utils.resolve_relative_path(filepath)
+    print_staggered(filepath, stag_size=stag_size)
+
+
+@cli.command()
+@click.argument('file', type=click.Path(exists=True))
+@click.option('--y-keys', '-y', required=True, help="Comma-separated y-axis key fields")
+@click.option('--x-keys', '-x', required=True, help="Comma-separated x-axis key fields")
+@click.option('--z-keys', '-z', default=None, help="Comma-separated z-axis value fields")
+@click.option('--agg-type', '-a', default=None, type=click.Choice(['count', 'sum', 'product', 'mean']),
+              help="Aggregation type")
+@wip
+def pivot(file, y_keys, x_keys, z_keys, agg_type):
+    """
+    Pivot tabular data.
+
+    Example:  ds . pivot data.csv -y 1 -x 2
+    """
+    from scripts.pivot import Pivot
+    file = Utils.resolve_relative_path(file)
+    p = Pivot(file, y_keys, x_keys, z_keys=z_keys, agg_type=agg_type)
+    with open(file, 'r') as f:
+        p.data = [line.strip().split() for line in f]
+    p.pivot()
+    p.print_pivot()
+
+
+@cli.command()
+@wip
+def hist():
+    """
+    Print histograms for numeric fields in data (reads from stdin).
+
+    Example:  cat data.txt | ds . hist
+    """
+    from scripts.hist import main as _hist_main
+    _hist_main()
+
+
+# ---------------------------------------------------------------------------
+# Stub commands — incomplete ports, hidden from `ds commands` by default
+# ---------------------------------------------------------------------------
+
+@cli.command(name="diff_fields")
+@click.argument('file1', type=click.Path(exists=True))
+@click.argument('file2', type=click.Path(exists=True))
+@click.argument('op', default='-')
+@click.option('--exclude-fields', '-e', default="0", help="Comma-separated field indices to exclude")
+@click.option('--header', '-h', is_flag=True, help="First row is a header")
+@click.option('--summary', is_flag=True, help="Print diff summary")
+@click.option('--summary-sort', is_flag=True, help="Sort the diff summary")
+@stub
+def diff_fields(file1, file2, op, exclude_fields, header, summary, summary_sort):
+    """
+    Elementwise diff of two datasets.
+
+    Example:  ds . diff_fields a.csv b.csv - --header
+    """
+    from scripts.diff_fields import DiffFields
+    file1 = Utils.resolve_relative_path(file1)
+    file2 = Utils.resolve_relative_path(file2)
+    df = DiffFields(file1, file2, op, exclude_fields, header, summary=summary, summary_sort=summary_sort)
+    df.run()
+
+
+@cli.command(name="fit")
+@stub
+def fit():
+    """
+    Fit fielded data in columns with dynamic width.
+    """
+    click.echo("Not yet ported.")
+
+
+@cli.command(name="reo")
+@stub
+def reo():
+    """
+    Reorder, repeat, or slice data by rows and columns.
+    """
+    click.echo("Not yet ported.")
+
+
+@cli.command(name="sortm")
+@stub
+def sortm():
+    """
+    Sort with inferred field separator (multi-char support).
+    """
+    click.echo("Not yet ported.")
+
+
+@cli.command(name="subsep")
+@click.argument('filepath', type=click.Path(exists=True))
+@click.argument('subsep_pattern')
+@click.option('--nomatch-handler', '-n', default=r'\s+', help="Fallback split pattern for non-matching lines")
+@stub
+def subsep(filepath, subsep_pattern, nomatch_handler):
+    """
+    Extend fields by a common sub-separator.
+
+    Example:  ds . subsep data.txt ":"
+    """
+    from scripts.subseparator import SubseparatorFinder
+    filepath = Utils.resolve_relative_path(filepath)
+    finder = SubseparatorFinder(subsep_pattern=subsep_pattern, nomatch_handler=nomatch_handler)
+    finder.process_file(filepath)
+
+
+@cli.command(name="inferh")
+@stub
+def inferh():
+    """
+    Infer if headers are present in the first row of a file.
+    """
+    click.echo("Not yet ported (still AWK).")
+
+
+@cli.command(name="cardinality")
+@click.argument('filepath', type=click.Path(exists=True))
+@stub
+def cardinality(filepath):
+    """
+    Calculate cardinality (distinct values) per field.
+
+    Example:  ds . cardinality data.txt
+    """
+    from scripts.cardinality import Cardinality
+    filepath = Utils.resolve_relative_path(filepath)
+    c = Cardinality()
+    with open(filepath, 'r') as f:
+        for line in f:
+            c.process_line(line)
+    c.print_cardinality()
+
+
+@cli.command(name="prod")
+@click.argument('files', nargs=-1, required=True, type=click.Path(exists=True))
+@stub
+def prod(files):
+    """
+    Cartesian product of lines from multiple files.
+
+    Example:  ds . prod set_a.txt set_b.txt
+    """
+    files = [Utils.resolve_relative_path(f) for f in files]
+    MSets = {}
+    MSetLen = {}
+    set_base = 0
+    prev_file = None
+    for filename in files:
+        with open(filename, 'r') as f:
+            if filename != prev_file:
+                set_base += 1
+            prev_file = filename
+            MSetLen[set_base] = 0
+            for line in f:
+                MSetLen[set_base] += 1
+                MSets[(set_base, MSetLen[set_base])] = line.strip()
+
+    msets_len = set_base
+    def _print_product(start, max_val, mult, max_mult, advance_val=None):
+        iteration = max_mult - mult + 1
+        init_adv = advance_val
+        dec_mult = mult - 1
+        for i in range(start, max_val + 1):
+            if iteration < 2:
+                advance_val = MSets[(iteration, i)]
+            else:
+                advance_val = str(init_adv) + ' ' + str(MSets[(iteration, i)])
+            if mult > 1:
+                _print_product(1, MSetLen[iteration + 1], dec_mult, max_mult, advance_val)
+            else:
+                click.echo(advance_val)
+
+    if msets_len and MSetLen.get(1):
+        _print_product(1, MSetLen[1], msets_len, msets_len)
+
+
+@cli.command(name="shape")
+@stub
+def shape():
+    """
+    Print data shape by length or pattern (reads from stdin).
+
+    Example:  cat data.txt | ds . shape
+    """
+    import re
+    from collections import defaultdict
+
+    tty_size = 100
+    span = 15
+    measures = '_length_'
+    shape_marker = '+'
+
+    measures = measures.split(',')
+    shape_marker_string = shape_marker * tty_size
+
+    buckets = 0
+    bucket_discriminant = 0
+    J = defaultdict(int)
+    MaxJ = defaultdict(int)
+    MaxOccurrences = defaultdict(int)
+    TotalOccurrences = defaultdict(int)
+    MatchLines = defaultdict(int)
+    _ = {}
+    fields_list = ['0']
+
+    for lineno, line in enumerate(sys.stdin, start=1):
+        bucket_discriminant = lineno % span
+        if bucket_discriminant == 0:
+            buckets += 1
+        for f_i, field in enumerate(fields_list, start=1):
+            for m_i, measure in enumerate(measures, start=1):
+                key = (f_i, m_i)
+                value = len(re.findall(measure, line)) if measure != '_length_' else len(line)
+                occurrences = max(value, 0)
+                if occurrences > MaxOccurrences[key]:
+                    MaxOccurrences[key] = occurrences
+                TotalOccurrences[key] += occurrences
+                m = max(occurrences, 0)
+                J[key] += m
+                if m:
+                    MatchLines[key] += 1
+                if bucket_discriminant == 0:
+                    if J[key] > MaxJ[key]:
+                        MaxJ[key] = J[key]
+                    _[key, lineno // span] = J[key]
+                    J[key] = 0
+
+    if not any(MaxJ.values()):
+        click.echo("Data not found with given parameters")
+        return
+
+    for f_i, field in enumerate(fields_list, start=1):
+        click.echo(f"stats from field: {field}")
+        for m_i, measure in enumerate(measures, start=1):
+            key = (f_i, m_i)
+            click.echo(f'lines with "{measure}": {MatchLines[key]}')
+            click.echo(f'occurrence: {TotalOccurrences[key]}')
+            avg = TotalOccurrences[key] / lineno if lineno else 0
+            click.echo(f'average: {avg}')
+            click.echo(f'approx var: {(MaxOccurrences[key] - avg) ** 2}')
+
+
+@cli.command(name="field_uniques")
+@click.argument('fields_spec', default="0")
+@stub
+def field_uniques(fields_spec):
+    """
+    Get unique values from specified fields (reads from stdin).
+
+    Example:  cat data.txt | ds . field_uniques 1,2
+    """
+    import re
+    from collections import defaultdict
+
+    fields = []
+    if re.search("[A-z]+", fields_spec):
+        fields.append(0)
+    else:
+        fields = list(map(int, re.split("[ ,|:;._]+", fields_spec)))
+    if not fields:
+        fields.append(0)
+
+    OFS = " "
+    counts = defaultdict(int)
+    printed_vals = []
+
+    for line in sys.stdin:
+        parts = line.split()
+        val = OFS.join(parts[field - 1] for field in fields if field - 1 < len(parts))
+        counts[val] += 1
+        if val not in printed_vals and counts[val] > 0:
+            click.echo(val)
+            printed_vals.append(val)
+
+
+@cli.command(name="enti")
+@click.argument('filepath', type=click.Path(exists=True))
+@click.option('--sep', '-s', default=r'\s+', help="Separator pattern")
+@click.option('--min', '-m', 'min_count', default=0, help="Minimum count to display")
+@stub
+def enti(filepath, sep, min_count):
+    """
+    Print text entities separated by a pattern.
+
+    Example:  ds . enti data.txt --sep "," --min 2
+    """
+    from scripts.separated_entities import TextEntities
+    filepath = Utils.resolve_relative_path(filepath)
+    te = TextEntities(min_count=min_count, separator=sep)
+    te.process_file(filepath)
+    te.print_entities()
+
 
 def main():
     try:
