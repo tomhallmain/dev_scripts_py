@@ -119,7 +119,7 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:decap             |                    | —           |                                              |
 | ds:deps              |                    | —           | Shell-specific                               |
 | ds:deps2             |                    | —           |                                              |
-| ds:diff              |                    | script only | `diff_color.py` exists but not wired         |
+| ds:diff              | `ds diff`          | STUB        | Runs side-by-side diff, colorized via `diff_color.py` |
 | ds:diff_fields       | `ds diff_fields`   | STUB        | References undefined globals in process_lines |
 | ds:dostounix         |                    | —           |                                              |
 | ds:dup_input         |                    | —           |                                              |
@@ -150,13 +150,13 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:git_word_diff     |                    | —           |                                              |
 | ds:goog              |                    | —           |                                              |
 | ds:graph             | `ds graph`         | WIP         | Reads from stdin                             |
-| ds:grepvi            |                    | —           | Shell/vim-specific                           |
+| ds:grepvi            | `ds grepvi`        | ✅          | Grep content and open in `$EDITOR`           |
 | ds:help              | `ds --help`        | ✅          | Also `ds commands`                           |
 | ds:hist              | `ds hist`          | WIP         | Incomplete (truncated after binning)         |
 | ds:index             | `ds index`         | ✅          |                                              |
 | ds:inferfs           | `ds inferfs`       | ✅          |                                              |
 | ds:inferh            | `ds inferh`        | STUB        | Still AWK, not yet ported to Python          |
-| ds:inferk            |                    | script only | `infer_join_fields.py` exists but not wired  |
+| ds:inferk            | `ds inferk`        | STUB        | Script has mixed AWK/Python syntax           |
 | ds:insert            |                    | —           |                                              |
 | ds:iter              |                    | —           |                                              |
 | ds:jira              |                    | —           |                                              |
@@ -200,7 +200,7 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:transpose         | `ds transpose`     | ✅          |                                              |
 | ds:unicode           | `ds unicode`       | ✅          |                                              |
 | ds:uniq              | `ds field_uniques` | STUB        |                                              |
-| ds:vi                |                    | —           | Shell/vim-specific                           |
+| ds:vi                | `ds vi`            | ✅          | Search files by name and open in `$EDITOR`   |
 | ds:websel            |                    | —           |                                              |
 
 ### Commands in dev_scripts_py with no original equivalent
@@ -218,8 +218,6 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 
 | Script                    | Nearest original | Notes                                    |
 | ------------------------- | ---------------- | ---------------------------------------- |
-| `diff_color.py`           | ds:diff          | Complete class, needs entry point wrapper |
 | `curlies.py`              | ds:searchx       | Hardcoded filename in main()             |
-| `infer_join_fields.py`    | ds:inferk        | Incomplete, has commented-out code       |
 | `find_string_subparts.py` | —                | Utility functions only                   |
 | `LocalMachineConfig.py`   | —                | Config class, has import error           |

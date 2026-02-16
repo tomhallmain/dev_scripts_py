@@ -730,6 +730,90 @@ def enti(filepath, sep, min_count):
     te.print_entities()
 
 
+@cli.command(name="diff")
+@click.argument('file1', type=click.Path(exists=True))
+@click.argument('file2', type=click.Path(exists=True))
+@click.option('--suppress-common', '-s', is_flag=True, help="Suppress common lines")
+@click.option('--no-color', is_flag=True, help="Disable colorized output")
+@stub
+def diff_cmd(file1, file2, suppress_common, no_color):
+    """
+    Side-by-side diff with colorized output.
+
+    Example:  ds . diff old.txt new.txt
+    """
+    import shutil
+    import subprocess
+    file1 = Utils.resolve_relative_path(file1)
+    file2 = Utils.resolve_relative_path(file2)
+
+    tty_width = shutil.get_terminal_size().columns
+    diff_args = ['diff', '--side-by-side', f'--width={tty_width}']
+    if suppress_common:
+        diff_args.append('--suppress-common-lines')
+    diff_args.extend([file1, file2])
+
+    result = subprocess.run(diff_args, capture_output=True, text=True)
+    lines = result.stdout.splitlines()
+
+    if not lines:
+        click.echo("Files are identical.")
+        return
+
+    if no_color:
+        for line in lines:
+            click.echo(line)
+    else:
+        from scripts.diff_color import DiffColor
+        dc = DiffColor(tty_width // 2)
+        dc.color_diff(lines)
+
+
+@cli.command(name="inferk")
+@stub
+def inferk():
+    """
+    Infer join fields between two text data files.
+    """
+    click.echo("Not yet ported (script has mixed AWK/Python syntax).")
+
+
+@cli.command(name="grepvi")
+@click.argument('search')
+@click.argument('target', default=".", required=False)
+@click.option('--edit-all', '-a', is_flag=True, help="Open all matching files in editor")
+@click.option('--no-edit', '-n', is_flag=True, help="Only list matches, don't open editor")
+def grepvi(search, target, edit_all, no_edit):
+    """
+    Grep for a pattern and open matching files in an editor.
+
+    Uses $EDITOR (falls back to vim, code, nano, or notepad).
+
+    Example:  ds . grepvi "TODO" src/
+    """
+    from scripts.grep_edit import grep_and_edit
+    target = Utils.resolve_relative_path(target)
+    grep_and_edit(search, target, edit_all=edit_all, edit=not no_edit)
+
+
+@cli.command(name="vi")
+@click.argument('search')
+@click.argument('directory', default=".", required=False)
+@click.option('--edit-all', '-a', is_flag=True, help="Open all matching files in editor")
+@click.option('--no-edit', '-n', is_flag=True, help="Only list matches, don't open editor")
+def vi_cmd(search, directory, edit_all, no_edit):
+    """
+    Search for files by name and open in an editor.
+
+    Uses $EDITOR (falls back to vim, code, nano, or notepad).
+
+    Example:  ds . vi "*.py" src/
+    """
+    from scripts.grep_edit import find_and_edit
+    directory = Utils.resolve_relative_path(directory)
+    find_and_edit(search, directory, edit_all=edit_all, edit=not no_edit)
+
+
 def main():
     try:
         cli()
