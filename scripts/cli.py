@@ -831,17 +831,21 @@ def inferk():
 @click.argument('target', default=".", required=False)
 @click.option('--edit-all', '-a', is_flag=True, help="Open all matching files in editor")
 @click.option('--no-edit', '-n', is_flag=True, help="Only list matches, don't open editor")
-def grepvi(search, target, edit_all, no_edit):
+@click.option('--print', '-p', 'print_matches', is_flag=True, help="Print matches in addition to opening editor")
+def grepvi(search, target, edit_all, no_edit, print_matches):
     """
     Grep for a pattern and open matching files in an editor.
 
     Uses $EDITOR (falls back to vim, code, nano, or notepad).
+    Matches are printed automatically with --no-edit; use --print
+    to also see them when opening the editor.
 
-    Example:  ds . grepvi "TODO" src/
+    Example:  ds grepvi "TODO" src/
     """
     from scripts.grep_edit import grep_and_edit
     target = Utils.resolve_relative_path(target)
-    grep_and_edit(search, target, edit_all=edit_all, edit=not no_edit)
+    grep_and_edit(search, target, edit_all=edit_all, edit=not no_edit,
+                  print_matches=print_matches or None)
 
 
 @cli.command(name="vi")
@@ -849,17 +853,21 @@ def grepvi(search, target, edit_all, no_edit):
 @click.argument('directory', default=".", required=False)
 @click.option('--edit-all', '-a', is_flag=True, help="Open all matching files in editor")
 @click.option('--no-edit', '-n', is_flag=True, help="Only list matches, don't open editor")
-def vi_cmd(search, directory, edit_all, no_edit):
+@click.option('--print', '-p', 'print_matches', is_flag=True, help="Print matches in addition to opening editor")
+def vi_cmd(search, directory, edit_all, no_edit, print_matches):
     """
     Search for files by name and open in an editor.
 
     Uses $EDITOR (falls back to vim, code, nano, or notepad).
+    Matches are printed automatically with --no-edit; use --print
+    to also see them when opening the editor.
 
-    Example:  ds . vi "*.py" src/
+    Example:  ds vi "*.py" src/
     """
     from scripts.grep_edit import find_and_edit
     directory = Utils.resolve_relative_path(directory)
-    find_and_edit(search, directory, edit_all=edit_all, edit=not no_edit)
+    find_and_edit(search, directory, edit_all=edit_all, edit=not no_edit,
+                  print_matches=print_matches or None)
 
 
 def main():
