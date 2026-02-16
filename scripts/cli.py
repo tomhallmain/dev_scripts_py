@@ -23,6 +23,23 @@ def cli(startpath, debug):
         click.echo('dev_scripts_py: Debug mode is on')
 
 @cli.command()
+@click.pass_context
+def commands(ctx):
+    """
+    List all available commands.
+    """
+    group = ctx.parent.command
+    cmd_names = group.list_commands(ctx.parent)
+    if not cmd_names:
+        click.echo("No commands available.")
+        return
+    max_len = max(len(name) for name in cmd_names)
+    for name in cmd_names:
+        cmd = group.get_command(ctx.parent, name)
+        help_text = cmd.get_short_help_str(limit=80) if cmd else ""
+        click.echo(f"  {name:<{max_len}}  {help_text}")
+
+@cli.command()
 def agg():
     """
     Aggregate field-based text data.

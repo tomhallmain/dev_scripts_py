@@ -26,6 +26,24 @@ The executable automatically uses the current directory as the working context.
 
 Run `ds <command>` where `<command>` is one of the available commands below. The current directory is automatically used as the working context.
 
+To list all available commands, run:
+
+```bash
+ds commands
+```
+
+or equivalently:
+
+```bash
+ds --help
+```
+
+You can also get detailed help for a specific command with:
+
+```bash
+ds <command> --help
+```
+
 ### Available Commands
 
 - `ds move <source> <target> [--filter]` - Move files or directories with optional filtering
