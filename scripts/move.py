@@ -66,6 +66,14 @@ class FileMover:
         
         self.source_is_dir = os.path.isdir(self.source)
         self.target_is_dir = os.path.isdir(self.target) if os.path.exists(self.target) else None
+        self._source_norm = os.path.normcase(self.source)
+        self._target_norm = os.path.normcase(self.target)
+        self._source_equals_target_dir = (
+            self.source_is_dir
+            and self.target_is_dir
+            and self._source_norm == self._target_norm
+        )
+        self._last_scan_count = None
 
     def _expand_tag(self, tag):
         """
@@ -81,6 +89,10 @@ class FileMover:
         if tag_lower in self.FILE_TYPE_TAGS:
             return self.FILE_TYPE_TAGS[tag_lower]
         return None
+    
+    def _paths_equal(self, path_a, path_b):
+        """Fast normalized path equality check without filesystem resolution."""
+        return os.path.normcase(os.path.abspath(path_a)) == os.path.normcase(os.path.abspath(path_b))
 
     def _matches_filter(self, filepath):
         """
@@ -134,6 +146,9 @@ class FileMover:
         
         # Directory - collect matching files
         for root, dirs, filenames in os.walk(self.source):
+            # In flatten-in-place mode, ignore files already in the root directory.
+            if self._source_equals_target_dir and os.path.normcase(os.path.abspath(root)) == self._source_norm:
+                continue
             for filename in filenames:
                 filepath = os.path.join(root, filename)
                 if self._matches_filter(filepath):
@@ -148,8 +163,12 @@ class FileMover:
         Returns:
             Number of files to move, or None if source doesn't exist
         """
+        if self._last_scan_count is not None:
+            return self._last_scan_count
+        
         files_to_move = self._get_files_to_move()
-        return len(files_to_move)
+        self._last_scan_count = len(files_to_move)
+        return self._last_scan_count
 
     def _determine_target_path(self, source_file, files_to_move_count):
         """
@@ -247,6 +266,7 @@ class FileMover:
             show_summary: If True, show summary instead of individual files (for dry_run)
         """
         files_to_move = self._get_files_to_move()
+        self._last_scan_count = len(files_to_move)
         
         if not files_to_move:
             if self.filter_pattern:
@@ -272,9 +292,13 @@ class FileMover:
         successful_files = set()
         failed_files = {}
         files_count = len(files_to_move)
+        skipped_same_path_count = 0
         
         for source_file in files_to_move:
             target_path = self._determine_target_path(source_file, files_count)
+            if self._paths_equal(source_file, target_path):
+                skipped_same_path_count += 1
+                continue
             
             # Create target directory if needed
             target_dir = os.path.dirname(target_path)
@@ -302,10 +326,14 @@ class FileMover:
             action_past = "copied" if self.copy_mode else "moved"
             print(f"{action} operation completed ({total} total):")
             print(summary)
+            if skipped_same_path_count > 0:
+                print(f"Skipped {skipped_same_path_count} file(s) already at target path.")
             if failure_count > 0:
                 print(f"\nFailed {action_past} ({failure_count}):")
                 for filepath, error in failed_files.items():
                     print(f"  {filepath}: {error}")
+            # Operation changed filesystem state; invalidate cached pre-scan count.
+            self._last_scan_count = None
         
         return True
 
