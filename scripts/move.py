@@ -74,6 +74,7 @@ class FileMover:
             and self._source_norm == self._target_norm
         )
         self._last_scan_count = None
+        self._last_scan_files = None
 
     def _expand_tag(self, tag):
         """
@@ -156,19 +157,40 @@ class FileMover:
         
         return files_to_move
     
-    def get_file_count(self):
+    def get_file_list(self, force_refresh=False):
+        """
+        Get the current file list that would be moved/copied.
+        
+        Args:
+            force_refresh: If True, always perform a fresh scan
+        
+        Returns:
+            Sorted list of absolute file paths
+        """
+        if not force_refresh and self._last_scan_files is not None:
+            return list(self._last_scan_files)
+        
+        files_to_move = [os.path.abspath(path) for path in self._get_files_to_move()]
+        files_to_move.sort(key=lambda path: os.path.normcase(path))
+        self._last_scan_files = files_to_move
+        self._last_scan_count = len(files_to_move)
+        return list(files_to_move)
+    
+    def get_file_count(self, force_refresh=False):
         """
         Get the count of files that would be moved.
+        
+        Args:
+            force_refresh: If True, always perform a fresh scan
         
         Returns:
             Number of files to move, or None if source doesn't exist
         """
-        if self._last_scan_count is not None:
+        if not force_refresh and self._last_scan_count is not None:
             return self._last_scan_count
         
-        files_to_move = self._get_files_to_move()
-        self._last_scan_count = len(files_to_move)
-        return self._last_scan_count
+        files_to_move = self.get_file_list(force_refresh=force_refresh)
+        return len(files_to_move)
 
     def _determine_target_path(self, source_file, files_to_move_count):
         """
@@ -265,8 +287,7 @@ class FileMover:
             dry_run: If True, only print what would be moved without actually moving
             show_summary: If True, show summary instead of individual files (for dry_run)
         """
-        files_to_move = self._get_files_to_move()
-        self._last_scan_count = len(files_to_move)
+        files_to_move = self.get_file_list(force_refresh=True)
         
         if not files_to_move:
             if self.filter_pattern:
@@ -334,6 +355,7 @@ class FileMover:
                     print(f"  {filepath}: {error}")
             # Operation changed filesystem state; invalidate cached pre-scan count.
             self._last_scan_count = None
+            self._last_scan_files = None
         
         return True
 
@@ -360,8 +382,17 @@ def move_main(source, target, filter_pattern=None, threshold=20, copy=False):
         print(f"{action.capitalize()} operation cancelled - no files to {action}.")
         return
     
+    def _format_display_path(path):
+        if mover.source_is_dir:
+            try:
+                return os.path.relpath(path, mover.source)
+            except ValueError:
+                return path
+        return path
+    
     # Get file count for threshold check
-    file_count = mover.get_file_count()
+    baseline_files = mover.get_file_list()
+    file_count = len(baseline_files)
     
     # Ask for confirmation
     action = "copy" if copy else "move"
@@ -377,6 +408,50 @@ def move_main(source, target, filter_pattern=None, threshold=20, copy=False):
         if double_confirm.lower() != "y":
             print(f"{action.capitalize()} operation cancelled.")
             return
+    
+    # Re-scan until the result is stable; if it changes, require re-confirmation.
+    while True:
+        refreshed_files = mover.get_file_list(force_refresh=True)
+        if refreshed_files == baseline_files:
+            break
+        
+        old_set = set(baseline_files)
+        new_set = set(refreshed_files)
+        removed_files = sorted(old_set - new_set, key=lambda path: os.path.normcase(path))
+        added_files = sorted(new_set - old_set, key=lambda path: os.path.normcase(path))
+        refreshed_count = len(refreshed_files)
+        
+        print(f"\nFile list changed since preview: {file_count} -> {refreshed_count}. Please re-confirm.")
+        if removed_files:
+            print("Removed from operation list:")
+            for path in removed_files[:10]:
+                print(f"  - {_format_display_path(path)}")
+            if len(removed_files) > 10:
+                print(f"  ... and {len(removed_files) - 10} more")
+        if added_files:
+            print("Added to operation list:")
+            for path in added_files[:10]:
+                print(f"  + {_format_display_path(path)}")
+            if len(added_files) > 10:
+                print(f"  ... and {len(added_files) - 10} more")
+        
+        if refreshed_count == 0:
+            print(f"{action.capitalize()} operation cancelled - no files to {action}.")
+            return
+        
+        file_count = refreshed_count
+        baseline_files = refreshed_files
+        reconfirm = input(f"Proceed with updated {action} set? (Y/n): ")
+        if reconfirm.lower() != "y" and reconfirm.lower() != "":
+            print(f"{action.capitalize()} operation cancelled.")
+            return
+        
+        if file_count >= threshold:
+            print(f"\nWarning: {file_count} files to {action} (threshold: {threshold})")
+            double_confirm = input("Are you sure you want to proceed? (Y/n): ")
+            if double_confirm.lower() != "y":
+                print(f"{action.capitalize()} operation cancelled.")
+                return
     
     # Perform the actual move/copy
     mover.run(dry_run=False)
