@@ -366,12 +366,10 @@ def git_status(base_dir, track_non_repos):
 
     Example:  ds . git_status ~/repos
     """
-    from scripts.all_repo_git_status import GitStatus
+    from scripts.git_commands import git_status_cmd
     if base_dir:
         base_dir = Utils.resolve_relative_path(base_dir)
-    gs = GitStatus(base_dir, track_non_repos=track_non_repos)
-    gs.get_git_repos()
-    gs.print_git_status()
+    git_status_cmd(base_dir, track_non_repos=track_non_repos)
 
 
 @cli.command(name="git_branch", aliases=["gb"])
@@ -385,34 +383,155 @@ def git_branch(base_dir):
 
     Example:  ds . git_branch
     """
-    from scripts.all_repo_git_branch import GitRepo
-    gr = GitRepo()
+    from scripts.git_commands import git_branch_cmd
     if base_dir:
-        import os as _os
         base_dir = Utils.resolve_relative_path(base_dir)
-        gr.home_dirs = [
-            _os.path.join(base_dir, d)
-            for d in _os.listdir(base_dir)
-            if _os.path.isdir(_os.path.join(base_dir, d))
-        ]
-    gr.find_repos()
-    gr.print_branches()
+    git_branch_cmd(base_dir)
 
 
 @cli.command(name="git_purge_local", aliases=["gpl"])
 @click.argument('base_dir')
 @click.argument('branches', nargs=-1, required=True)
-@wip
 def git_purge_local(base_dir, branches):
     """
     Purge specified branches from all local git repos under BASE_DIR.
 
     Example:  ds . git_purge_local ~/repos feature-old bugfix-stale
     """
-    from scripts.purge_local_branches import GitBranchPurger
+    from scripts.git_commands import git_purge_local_cmd
     base_dir = Utils.resolve_relative_path(base_dir)
-    purger = GitBranchPurger(base_dir)
-    purger.purge_branches(list(branches))
+    git_purge_local_cmd(base_dir, branches)
+
+
+@cli.command(name="git_add_com_push", aliases=["gacp"])
+@click.argument('commit_message', required=False, default="")
+@click.argument('prompt', required=False, default="t")
+def git_add_com_push(commit_message, prompt):
+    """
+    Add, commit with message, and push.
+    """
+    from scripts.git_commands import git_add_com_push_cmd
+    git_add_com_push_cmd(commit_message, prompt)
+
+
+@cli.command(name="git_checkout", aliases=["gco"])
+@click.argument('branch_pattern', required=False, default="")
+@click.argument('new_branch', required=False, default="f")
+def git_checkout(branch_pattern, new_branch):
+    """
+    Checkout branch matching pattern.
+    """
+    from scripts.git_commands import git_checkout_cmd
+    git_checkout_cmd(branch_pattern, new_branch)
+
+
+@cli.command(name="git_cross_view", aliases=["gcv"])
+@click.argument('base_dir', required=False, default=None)
+@click.option('--show-status', '-s', is_flag=True, help="Show staged/unstaged counts")
+def git_cross_view(base_dir, show_status):
+    """
+    Display table of git repos vs branches.
+    """
+    from scripts.git_commands import git_cross_view_cmd
+    if base_dir:
+        base_dir = Utils.resolve_relative_path(base_dir)
+    git_cross_view_cmd(base_dir, show_status=show_status)
+
+
+@cli.command(name="git_diff")
+@click.argument('git_args', nargs=-1, required=False)
+def git_diff(git_args):
+    """
+    Diff shortcut for exclusions.
+    """
+    from scripts.git_commands import git_diff_cmd
+    git_diff_cmd(git_args)
+
+
+@cli.command(name="git_graph", aliases=["gg"])
+def git_graph():
+    """
+    Print colorful git history graph.
+    """
+    from scripts.git_commands import git_graph_cmd
+    git_graph_cmd()
+
+
+@cli.command(name="git_recent", aliases=["gr"])
+@click.argument('refs', required=False, default="heads")
+@click.argument('run_context', required=False, default="display")
+def git_recent(refs, run_context):
+    """
+    Display commits sorted by recency.
+    """
+    from scripts.git_commands import git_recent_cmd
+    git_recent_cmd(refs=refs, run_context=run_context)
+
+
+@cli.command(name="git_recent_all", aliases=["gra"])
+@click.argument('refs', required=False, default="heads")
+@click.argument('base_dir', required=False, default=None)
+def git_recent_all(refs, base_dir):
+    """
+    Display recent commits for local repos.
+    """
+    from scripts.git_commands import git_recent_all_cmd
+    if base_dir:
+        base_dir = Utils.resolve_relative_path(base_dir)
+    git_recent_all_cmd(refs=refs, base_dir=base_dir)
+
+
+@cli.command(name="git_refresh", aliases=["grf"])
+@click.argument('base_dir', required=False, default=None)
+def git_refresh(base_dir):
+    """
+    Pull latest for all repos.
+    """
+    from scripts.git_commands import git_refresh_cmd
+    if base_dir:
+        base_dir = Utils.resolve_relative_path(base_dir)
+    git_refresh_cmd(base_dir=base_dir)
+
+
+@cli.command(name="git_squash", aliases=["gsq"])
+@click.argument('n_commits', required=False, default=1, type=int)
+@click.option('--yes', '-y', is_flag=True, help="Skip confirmation prompt")
+def git_squash(n_commits, yes):
+    """
+    Squash last n commits.
+    """
+    from scripts.git_commands import git_squash_cmd
+    git_squash_cmd(n_commits=n_commits, yes=yes)
+
+
+@cli.command(name="git_time_stat", aliases=["gts"])
+def git_time_stat():
+    """
+    Last local pull, change, and commit times.
+    """
+    from scripts.git_commands import git_time_stat_cmd
+    git_time_stat_cmd()
+
+
+@cli.command(name="git_word_diff", aliases=["gwdf"])
+@click.argument('git_diff_args', nargs=-1, required=False)
+def git_word_diff(git_diff_args):
+    """
+    Git word diff shortcut.
+    """
+    from scripts.git_commands import git_word_diff_cmd
+    git_word_diff_cmd(git_diff_args)
+
+
+@cli.command(name="git_branch_refs", aliases=["gbr"])
+@click.argument('branch', required=False, default=None)
+@click.argument('invert', required=False, default="f")
+def git_branch_refs(branch, invert):
+    """
+    List branches merged to a branch.
+    """
+    from scripts.git_commands import git_branch_refs_cmd
+    git_branch_refs_cmd(branch=branch, invert=invert)
 
 
 # ---------------------------------------------------------------------------

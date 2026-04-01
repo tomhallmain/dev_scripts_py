@@ -133,21 +133,21 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:fit               | `ds fit`           | STUB        | All methods are stubs                        |
 | ds:fsrc              |                    | —           | Shell-specific                               |
 | ds:gexec             |                    | —           |                                              |
-| ds:git_add_com_push  |                    | —           |                                              |
-| ds:git_branch        | `ds git_branch`    | ✅          |                                              |
-| ds:git_branch_refs   |                    | —           |                                              |
-| ds:git_checkout      |                    | —           |                                              |
-| ds:git_cross_view    |                    | —           |                                              |
-| ds:git_diff          |                    | —           |                                              |
-| ds:git_graph         |                    | —           |                                              |
-| ds:git_purge_local   | `ds git_purge_local` | WIP       | Originally had hardcoded path                |
-| ds:git_recent        |                    | —           |                                              |
-| ds:git_recent_all    |                    | —           |                                              |
-| ds:git_refresh       |                    | —           |                                              |
-| ds:git_squash        |                    | —           |                                              |
-| ds:git_status        | `ds git_status`    | ✅          |                                              |
-| ds:git_time_stat     |                    | —           |                                              |
-| ds:git_word_diff     |                    | —           |                                              |
+| ds:git_add_com_push  | `ds git_add_com_push` / `ds gacp` | ✅ |                                              |
+| ds:git_branch        | `ds git_branch` / `ds gb` | ✅    |                                              |
+| ds:git_branch_refs   | `ds git_branch_refs` / `ds gbr` | ✅ |                                              |
+| ds:git_checkout      | `ds git_checkout` / `ds gco` | ✅   |                                              |
+| ds:git_cross_view    | `ds git_cross_view` / `ds gcv` | ✅ |                                              |
+| ds:git_diff          | `ds git_diff`      | ✅          |                                              |
+| ds:git_graph         | `ds git_graph` / `ds gg` | ✅     |                                              |
+| ds:git_purge_local   | `ds git_purge_local` / `ds gpl` | ✅ |                                              |
+| ds:git_recent        | `ds git_recent` / `ds gr` | ✅     |                                              |
+| ds:git_recent_all    | `ds git_recent_all` / `ds gra` | ✅ |                                              |
+| ds:git_refresh       | `ds git_refresh` / `ds grf` | ✅   |                                              |
+| ds:git_squash        | `ds git_squash` / `ds gsq` | ✅    |                                              |
+| ds:git_status        | `ds git_status` / `ds gs` | ✅     |                                              |
+| ds:git_time_stat     | `ds git_time_stat` / `ds gts` | ✅  |                                              |
+| ds:git_word_diff     | `ds git_word_diff` / `ds gwdf` | ✅ |                                              |
 | ds:goog              |                    | —           |                                              |
 | ds:graph             | `ds graph`         | WIP         | Reads from stdin                             |
 | ds:grepvi            | `ds grepvi`        | ✅          | Grep content and open in `$EDITOR`           |
