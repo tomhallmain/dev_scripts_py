@@ -535,6 +535,96 @@ def git_branch_refs(branch, invert):
 
 
 # ---------------------------------------------------------------------------
+# Simple utility commands
+# ---------------------------------------------------------------------------
+
+@cli.command(name="rev")
+def rev():
+    """
+    Reverse lines from standard input.
+    """
+    from scripts.simple_commands import rev_cmd
+    rev_cmd(sys.stdin)
+
+
+@cli.command(name="join_by")
+@click.argument('delimiter')
+@click.argument('values', nargs=-1, required=False)
+def join_by(delimiter, values):
+    """
+    Join values by a delimiter.
+    """
+    from scripts.simple_commands import join_by_cmd
+    stdin_data = None if sys.stdin.isatty() else sys.stdin.read()
+    join_by_cmd(delimiter, values, stdin_data=stdin_data)
+
+
+@cli.command(name="iter")
+@click.argument('text')
+@click.argument('n', required=False, default=1, type=int)
+@click.argument('fs', required=False, default="")
+def iter_cmd(text, n, fs):
+    """
+    Repeat a string.
+    """
+    from scripts.simple_commands import iter_cmd as _iter_cmd
+    _iter_cmd(text, n=n, fs=fs)
+
+
+@cli.command(name="goog")
+@click.argument('query', nargs=-1, required=False)
+def goog(query):
+    """
+    Search Google.
+    """
+    from scripts.simple_commands import goog_cmd
+    goog_cmd(query)
+
+
+@cli.command(name="jira")
+@click.argument('workspace_subdomain')
+@click.argument('issue_or_query', required=False, default=None)
+def jira(workspace_subdomain, issue_or_query):
+    """
+    Open Jira issue/search for a workspace.
+    """
+    from scripts.simple_commands import jira_cmd
+    jira_cmd(workspace_subdomain, issue_or_query=issue_or_query)
+
+
+@cli.command(name="insert")
+@click.argument('sink')
+@click.argument('where')
+@click.argument('source', required=False, default=None)
+@click.argument('inplace', required=False, default="f")
+def insert(sink, where, source, inplace):
+    """
+    Redirect input into a file at line number or pattern.
+    """
+    from scripts.simple_commands import insert_cmd
+    sink = Utils.resolve_relative_path(sink)
+    source_path = Utils.resolve_relative_path(source) if source else None
+    stdin_data = None if sys.stdin.isatty() else sys.stdin.read()
+    insert_cmd(sink, where, source_path, inplace, stdin_data)
+
+
+@cli.command(name="line")
+@click.argument('seed_cmds', required=False, default=None)
+@click.argument('line_cmds', required=False, default=None)
+@click.argument('ifs', required=False, default="\n")
+def line(seed_cmds, line_cmds, ifs):
+    """
+    Execute command(s) for each input line.
+    """
+    from scripts.simple_commands import line_cmd
+    if line_cmds is None:
+        line_cmds = seed_cmds
+        seed_cmds = None
+    stdin_data = None if sys.stdin.isatty() else sys.stdin.read()
+    line_cmd(seed_cmds=seed_cmds, line_cmds=line_cmds, ifs=ifs, stdin_data=stdin_data)
+
+
+# ---------------------------------------------------------------------------
 # Conda commands
 # ---------------------------------------------------------------------------
 

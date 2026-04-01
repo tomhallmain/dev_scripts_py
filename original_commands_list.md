@@ -148,7 +148,7 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:git_status        | `ds git_status` / `ds gs` | ✅     |                                              |
 | ds:git_time_stat     | `ds git_time_stat` / `ds gts` | ✅  |                                              |
 | ds:git_word_diff     | `ds git_word_diff` / `ds gwdf` | ✅ |                                              |
-| ds:goog              |                    | —           |                                              |
+| ds:goog              | `ds goog`          | ✅          | Opens browser search URL                      |
 | ds:graph             | `ds graph`         | WIP         | Reads from stdin                             |
 | ds:grepvi            | `ds grepvi`        | ✅          | Grep content and open in `$EDITOR`           |
 | ds:help              | `ds --help`        | ✅          | Also `ds commands`                           |
@@ -157,12 +157,12 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:inferfs           | `ds inferfs`       | ✅          |                                              |
 | ds:inferh            | `ds inferh`        | STUB        | Still AWK, not yet ported to Python          |
 | ds:inferk            | `ds inferk`        | STUB        | Script has mixed AWK/Python syntax           |
-| ds:insert            |                    | —           |                                              |
-| ds:iter              |                    | —           |                                              |
-| ds:jira              |                    | —           |                                              |
+| ds:insert            | `ds insert`        | ✅          | Supports stdin/file/string insertion source   |
+| ds:iter              | `ds iter`          | ✅          |                                              |
+| ds:jira              | `ds jira`          | ✅          | Opens Jira workspace/issue/search URL         |
 | ds:join              | `ds join`          | ✅          |                                              |
-| ds:join_by           |                    | —           |                                              |
-| ds:line              |                    | —           |                                              |
+| ds:join_by           | `ds join_by`       | ✅          |                                              |
+| ds:line              | `ds line`          | ✅          | Supports `{line}` placeholder in command      |
 | ds:matches           | `ds matches`       | ✅          |                                              |
 | ds:mini              |                    | —           |                                              |
 | ds:new               |                    | —           | Shell-specific                               |
@@ -178,7 +178,7 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:random            | `ds random`        | ✅          |                                              |
 | ds:recent            |                    | —           |                                              |
 | ds:reo               | `ds reo`           | STUB        | All methods are stubs                        |
-| ds:rev               |                    | —           |                                              |
+| ds:rev               | `ds rev`           | ✅          | Reads from stdin                              |
 | ds:searchn           |                    | —           | Shell-specific                               |
 | ds:searchx           |                    | script only | `curlies.py` exists but not wired            |
 | ds:sedi              |                    | —           |                                              |
