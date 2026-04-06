@@ -108,7 +108,6 @@ ds <command> --help
 
 - `ds agg` - Aggregate field-based text data
 - `ds asgn` - Print lines matching assignment pattern
-- `ds cd` - Change to a different directory in context
 
 #### Stubs (hidden from `ds commands` by default — use `ds commands --all`)
 

@@ -180,13 +180,17 @@ def case(tocase, text, field_sep):
         data_file = DataFile(None, field_sep) # TODO
     TextCaseConverter(tocase).recase(data_file)
 
-@cli.command()
-@wip
-def cd():
+@cli.command(name="cd", aliases=["cd"])
+@click.argument("search", required=False, default=None)
+def cd(search):
     """
-    Change to a different directory in context.
+    Resolve a directory for shell ``cd`` usage.
+
+    Prints the selected directory path; use as:
+    ``cd "$(ds . cd <search>)"``.
     """
-    click.echo("Not yet implemented.")
+    from scripts.cd_command import cd_cmd
+    cd_cmd(search)
 
 @cli.command(name="dup_files")
 @click.argument('dirpath')

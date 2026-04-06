@@ -111,7 +111,7 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:agg               | `ds agg`           | WIP         |                                              |
 | ds:asgn              | `ds asgn`          | WIP         |                                              |
 | ds:case              | `ds case`          | ✅          |                                              |
-| ds:cd                | `ds cd`            | WIP         |                                              |
+| ds:cd                | `ds cd`            | ✅          | Resolves a target path for shell `cd` usage  |
 | ds:color             |                    | —           |                                              |
 | ds:commands          | `ds commands`      | ✅          | Also available via `ds --help`               |
 | ds:comps             |                    | —           | Complement of `ds matches`                   |
