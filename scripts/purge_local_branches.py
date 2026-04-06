@@ -11,10 +11,22 @@ class GitBranchPurger:
         return next(os.walk(self.base_dir))[1]
 
     def is_git_repo(self, directory):
-        return subprocess.call(['git', '-C', directory, 'rev-parse'], stdout=subprocess.PIPE, stderr=subprocess.PIPE) == 0
+        return (
+            subprocess.call(
+                ['git', '-C', directory, 'rev-parse'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            == 0
+        )
 
     def get_all_repos(self):
-        return [dir for dir in self.get_base_dirs() if self.is_git_repo(dir)]
+        repos = []
+        for d in self.get_base_dirs():
+            abs_dir = os.path.join(self.base_dir, d)
+            if self.is_git_repo(abs_dir):
+                repos.append(abs_dir)
+        return repos
 
     def get_branches(self, repo):
         branches = subprocess.check_output(['git', 'for-each-ref', '--format=%(refname:lstrip=2)', 'refs/heads/'], cwd=repo).decode().splitlines()
@@ -23,17 +35,15 @@ class GitBranchPurger:
     def purge_branches(self, branches_to_purge):
         all_repos = self.get_all_repos()
         for repo in all_repos:
-            os.chdir(repo)
             branches = self.get_branches(repo)
             for branch in branches:
                 if branch in branches_to_purge:
                     print(f'Deleting {branch} from {repo}')
                     try:
-                        subprocess.check_call(['git', 'checkout', self.master_branches[0]])
-                        subprocess.check_call(['git', 'branch', '-D', branch])
+                        subprocess.check_call(['git', '-C', repo, 'checkout', self.master_branches[0]])
+                        subprocess.check_call(['git', '-C', repo, 'branch', '-D', branch])
                     except subprocess.CalledProcessError as e:
                         print(f'Error deleting branch {branch} in repo {repo}: {str(e)}')
-            os.chdir(self.base_dir)
 
 if __name__ == "__main__":
     purger = GitBranchPurger('/path/to/your/directory')
