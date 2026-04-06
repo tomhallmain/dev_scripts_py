@@ -124,7 +124,7 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:dostounix         |                    | —           |                                              |
 | ds:dup_input         |                    | —           |                                              |
 | ds:dups              | `ds dup_files`     | ✅          |                                              |
-| ds:embrace           |                    | —           |                                              |
+| ds:embrace           | `ds embrace`       | ✅          |                                              |
 | ds:enti              | `ds enti`          | STUB        |                                              |
 | ds:fail              |                    | —           | Shell-specific                               |
 | ds:field_replace     |                    | —           |                                              |

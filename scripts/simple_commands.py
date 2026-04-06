@@ -24,6 +24,29 @@ def join_by_cmd(delimiter: str, values: Tuple[str, ...], stdin_data: Optional[st
     click.echo(delimiter.join(items), nl=False)
 
 
+def embrace_cmd(args: Tuple[str, ...], stdin_data: Optional[str]) -> None:
+    """
+    Enclose text with left/right delimiters (default ``{`` / ``}``).
+
+    ``stdin_data`` is ``None`` when stdin was a TTY (string form: ``str [left [right]]``).
+    Otherwise stdin was read (pipe): ``[left [right]]`` apply to each line, concatenated.
+    """
+    left_default = "{"
+    right_default = "}"
+
+    if stdin_data is not None:
+        left = args[0] if len(args) >= 1 and args[0] != "" else left_default
+        right = args[1] if len(args) >= 2 and args[1] != "" else right_default
+        for line in stdin_data.splitlines():
+            click.echo(left + line + right, nl=False)
+        return
+
+    s = args[0] if len(args) >= 1 else ""
+    left = args[1] if len(args) >= 2 and args[1] != "" else left_default
+    right = args[2] if len(args) >= 3 and args[2] != "" else right_default
+    click.echo(left + s + right, nl=False)
+
+
 def iter_cmd(text: str, n: int = 1, fs: str = ""):
     if n < 1:
         raise click.ClickException("n must be >= 1.")

@@ -560,6 +560,21 @@ def join_by(delimiter, values):
     join_by_cmd(delimiter, values, stdin_data=stdin_data)
 
 
+@cli.command(name="embrace")
+@click.argument("args", nargs=-1)
+def embrace(args):
+    """
+    Wrap a string or each stdin line with delimiters (default ``{`` … ``}``).
+
+    With piped stdin: optional LEFT and RIGHT (``echo x | ds . embrace`` → ``{x}``).
+
+    With a TTY: ``STR [LEFT] [RIGHT]`` (``ds . embrace test`` → ``{test}``).
+    """
+    from scripts.simple_commands import embrace_cmd
+    stdin_data = None if sys.stdin.isatty() else sys.stdin.read()
+    embrace_cmd(tuple(args), stdin_data)
+
+
 @cli.command(name="iter")
 @click.argument('text')
 @click.argument('n', required=False, default=1, type=int)

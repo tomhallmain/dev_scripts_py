@@ -7,6 +7,7 @@ t_basic.sh references:
 - iter: ds:iter "a" 3 -> "aaa"
 - rev: printf a\\nb\\nc\\nd | ds:rev -> lines reversed (concatenated: dcba)
 - unicode: ds:unicode "cats😼😻" / pipe / hex (\\U… and %… forms)
+- embrace: ds:embrace 'test' / pipe → ``{test}``
 """
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ import pytest
 from click.testing import CliRunner
 
 from scripts.cli import cli
+from scripts.simple_commands import embrace_cmd
 from scripts.unicode import format_unicode
 
 
@@ -168,6 +170,58 @@ def test_unicode_cli_invalid_conversion_exits(runner: CliRunner) -> None:
         catch_exceptions=False,
     )
     assert result.exit_code != 0
+
+
+# --- t_basic.sh parity: embrace ---
+
+
+def test_embrace_cmd_tty_matches_t_basic() -> None:
+    import io
+    import contextlib
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        embrace_cmd(("test",), None)
+    assert buf.getvalue().rstrip("\n") == "{test}"
+
+
+@patch("click.testing._NamedTextIOWrapper.isatty", return_value=True)
+def test_embrace_positional_matches_t_basic(_mock_isatty: object, runner: CliRunner) -> None:
+    """CliRunner stdin is non-tty; real TTY uses string form — fake isatty for parity."""
+    result = runner.invoke(cli, [".", "embrace", "test"], catch_exceptions=False)
+    assert result.exit_code == 0
+    assert result.output.rstrip("\n") == "{test}"
+
+
+def test_embrace_stdin_matches_t_basic(runner: CliRunner) -> None:
+    result = runner.invoke(cli, [".", "embrace"], input="test\n", catch_exceptions=False)
+    assert result.exit_code == 0
+    assert result.output.rstrip("\n") == "{test}"
+
+
+def test_embrace_pipe_custom_left_right(runner: CliRunner) -> None:
+    result = runner.invoke(
+        cli,
+        [".", "embrace", "(", ")"],
+        input="hi\n",
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert result.output.rstrip("\n") == "(hi)"
+
+
+@patch("click.testing._NamedTextIOWrapper.isatty", return_value=True)
+def test_embrace_tty_custom_left_right(_mock_isatty: object, runner: CliRunner) -> None:
+    result = runner.invoke(cli, [".", "embrace", "x", "[", "]"], catch_exceptions=False)
+    assert result.exit_code == 0
+    assert result.output.rstrip("\n") == "[x]"
+
+
+def test_embrace_multiline_pipe_concatenates_wrapped_lines(runner: CliRunner) -> None:
+    """Awk prints each line wrapped with no separator between records."""
+    result = runner.invoke(cli, [".", "embrace"], input="a\nb\n", catch_exceptions=False)
+    assert result.exit_code == 0
+    assert result.output.rstrip("\n") == "{a}{b}"
 
 
 # --- insert, line, goog, jira (Python port; not in t_basic.sh) ---
