@@ -22,6 +22,17 @@ Alternatively, for development, you can use the `ds.bat` wrapper (Windows) or cr
 
 The executable automatically uses the current directory as the working context.
 
+## Tests
+
+Install dev dependencies (including pytest), then run the suite from the repository root:
+
+```bash
+pip install -r requirements.txt
+python -m pytest
+```
+
+Run a single file, for example: `python -m pytest tests/test_power.py`.
+
 ## Usage
 
 Run `ds <command>` where `<command>` is one of the available commands below. The current directory is automatically used as the working context.

@@ -1,46 +1,70 @@
 #!/usr/bin/env python3
-import argparse
 import re
 from collections import defaultdict
 
+from scripts.DataFile import DataFile
+
 
 class FieldsCounter:
-    IFS = '|||'
-    IFSRE = re.compile(r'\|\|\|')
+    """Value counts over fields; rows are read via :class:`DataFile`."""
 
-    def __init__(self, data_file, ofs=" ", fields=None, min=0, only_vals=False) -> None:
+    IFS = "|||"
+    IFSRE = re.compile(r"\|\|\|")
+
+    def __init__(
+        self,
+        data_file: DataFile,
+        ofs=" ",
+        fields=None,
+        min: int = 1,
+        only_vals: bool = False,
+    ) -> None:
         self.data_file = data_file
-
-        if fields:
-            if re.search(r'[A-z]+', fields):
-                self.fields = [0]
-            else:
-                self.fields = list(map(int, re.split(r'[ ,|\.:;_]+', fields)))
-        else:
-            self.fields = [1]
-
+        self.fields = self._parse_fields(fields)
+        # Shell does `let min=min-1` before awk; awk filters `count > min`.
+        self.min_threshold = max(0, min - 1)
         self.counts = not only_vals
-        self.counter = defaultdict(int)
+        self.counter: dict[str, int] = defaultdict(int)
         self.ofs = ofs
-        self.min = min
 
-    def run(self):
-        # Counting occurrences
-        with self.data_file.read() as f:
-            for line in f:
-                line = line.strip()
-                if self.fields[0] == 1:
-                    self.counter[line] += 1
-                else:
-                    key = FieldsCounter.IFS.join(line.split()[field-1] for field in self.fields)
-                    self.counter[key] += 1
+    def _parse_fields(self, fields) -> list[int]:
+        if fields is None or fields == "":
+            return [1]
+        s = str(fields).strip()
+        if re.search(r"[A-Za-z]", s):
+            return [0]
+        parts = [int(x) for x in re.split(r"[ ,|\.:;_]+", s) if x.strip() != ""]
+        return parts if parts else [1]
 
-        # Printing results
-        for key, count in self.counter.items():
-            if count > self.min:
-                if self.counts:
-                    print(f'{count}', end=' ')
-                if self.fields[0] == 0:
-                    print(key)
-                else:
-                    print(self.ofs.join(FieldsCounter.IFSRE.split(key)))
+    def _row_key(self, row: list[str]) -> str:
+        if not row:
+            return ""
+        if len(self.fields) == 1 and self.fields[0] == 0:
+            return self.ofs.join(row)
+        parts = []
+        for f in self.fields:
+            idx = f - 1
+            if 0 <= idx < len(row):
+                parts.append(row[idx])
+        return self.IFS.join(parts)
+
+    def run(self) -> None:
+        self.data_file.get_field_separator()
+        rows = self.data_file.get_data()
+        for row in rows:
+            key = self._row_key(row)
+            if key == "" and not (len(self.fields) == 1 and self.fields[0] == 0):
+                continue
+            self.counter[key] += 1
+
+        items = [(c, k) for k, c in self.counter.items() if c > self.min_threshold]
+        items.sort(key=lambda t: (-t[0], t[1]))
+
+        for count, key in items:
+            if self.counts:
+                print(count, end=self.ofs)
+            if len(self.fields) == 1 and self.fields[0] == 0:
+                print(key)
+            else:
+                parts = self.IFSRE.split(key)
+                print(self.ofs.join(parts))

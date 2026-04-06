@@ -57,7 +57,8 @@ class DataFile:
             self.data = []
             with open(self.file_path, newline="", encoding="utf-8") as f:
                 for row in csv.reader(f):
-                    line_data = [c.strip() for c in row if c.strip() != ""]
+                    # Keep empty cells so column indices align with the header / shell FS.
+                    line_data = [c.strip() for c in row]
                     self.data.append(line_data)
                     if len(line_data) > self.max_nf:
                         self.max_nf = len(line_data)

@@ -332,7 +332,8 @@ def field_counts(file, field_sep, ofs, fields="0", min=1, only_vals=False):
     """
     Count fields in data: ds field_counts [file]
     """
-    data_file = DataFile(file, field_sep)
+    path = file.name if hasattr(file, "name") else file
+    data_file = DataFile(path, field_sep)
     if ofs is None:
         ofs = data_file.get_field_separator()
     FieldsCounter(data_file, ofs=ofs, fields=fields, min=min, only_vals=only_vals).run()
@@ -959,16 +960,22 @@ def shape():
 
 
 @cli.command(name="field_uniques", aliases=["u"])
-@click.argument('fields_spec', default="0")
-@stub
-def field_uniques(fields_spec):
+@click.option("-f", "--file", "filepath", type=click.Path(exists=True), default=None, help="Input file (default: stdin)")
+@click.argument("fields_spec", default="a")
+@click.argument("min_count", type=int, default=1)
+@click.argument("order", default="a")
+def field_uniques(filepath, fields_spec, min_count, order):
     """
-    Get unique values from specified fields (reads from stdin).
+    Get unique values from specified fields (file or stdin).
 
-    Example:  cat data.txt | ds . field_uniques 1,2
+    Example:  cat data.txt | ds . field_uniques
+    Example:  ds . field_uniques -f data.txt 1 3 a
     """
-    from scripts.field_uniques import field_uniques_main
-    field_uniques_main(fields_spec)
+    from scripts.field_uniques import FieldUniques
+
+    path = Utils.resolve_relative_path(filepath) if filepath else None
+    data_file = DataFile(path)
+    FieldUniques(data_file, fields_spec=fields_spec, min_user=min_count, order=order).run()
 
 
 @cli.command(name="enti")
