@@ -110,6 +110,65 @@ def test_path_elements_another_nested(runner: CliRunner) -> None:
     assert r.output == "x/y/\tz\t.md"
 
 
+# --- ds:filename_str ---
+
+
+def test_filename_str_append_default_with_abs_path(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    d = tmp_path / "foo"
+    d.mkdir()
+    fp = d / "bar.txt"
+    r = runner.invoke(
+        cli,
+        [".", "filename_str", str(fp), "_new"],
+        catch_exceptions=False,
+    )
+    assert r.exit_code == 0
+    assert Path(r.output).as_posix() == (d / "bar_new.txt").as_posix()
+
+
+def test_filename_str_prepend_without_abs_path(runner: CliRunner, tmp_path: Path) -> None:
+    d = tmp_path / "foo"
+    d.mkdir()
+    fp = d / "bar.txt"
+    r = runner.invoke(
+        cli,
+        [".", "filename_str", str(fp), "pre_", "prepend", "f"],
+        catch_exceptions=False,
+    )
+    assert r.exit_code == 0
+    assert r.output == "pre_bar.txt"
+
+
+def test_filename_str_replace_keeps_extension(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    d = tmp_path / "foo"
+    d.mkdir()
+    fp = d / "bar.txt"
+    r = runner.invoke(
+        cli,
+        [".", "filename_str", str(fp), "renamed", "replace"],
+        catch_exceptions=False,
+    )
+    assert r.exit_code == 0
+    assert Path(r.output).as_posix() == (d / "renamed.txt").as_posix()
+
+
+def test_filename_str_invalid_position_fails(runner: CliRunner, tmp_path: Path) -> None:
+    d = tmp_path / "foo"
+    d.mkdir()
+    fp = d / "bar.txt"
+    r = runner.invoke(
+        cli,
+        [".", "filename_str", str(fp), "x", "middle"],
+        catch_exceptions=False,
+    )
+    assert r.exit_code != 0
+    assert "position must be one of" in r.output
+
+
 # --- t_basic.sh parity: unicode ---
 
 # echo -n to avoid extra newline in string; shell strips one trailing newline from $(...)

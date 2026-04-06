@@ -40,13 +40,45 @@ def path_elements_cmd(filepath: str) -> None:
     Matches ``ds:path_elements``: tab-separated fields, no trailing newline (POSIX-style
     directory separator in the first field).
     """
+    dir_out, stem, suffix = path_elements_parts(filepath)
+    click.echo(f"{dir_out}\t{stem}\t{suffix}", nl=False)
+
+
+def path_elements_parts(filepath: str) -> Tuple[str, str, str]:
+    """
+    Return ``(dir_with_trailing_slash, stem, suffix)`` for a filepath.
+    """
     if not filepath or not filepath.strip():
         raise click.ClickException("path_elements requires a non-empty FILEPATH.")
     p = Path(filepath)
     parent = p.parent
     dir_str = parent.as_posix() if parent != Path(".") else "."
     dir_out = dir_str + "/"
-    click.echo(f"{dir_out}\t{p.stem}\t{p.suffix}", nl=False)
+    return dir_out, p.stem, p.suffix
+
+
+def filename_str_cmd(filepath: str, add: str, position: str = "append", abs_path: str = "t") -> str:
+    """
+    Add ``add`` to a filename while preserving extension and (optionally) path.
+    """
+    dirpath, filename, extension = path_elements_parts(filepath)
+    if not os.path.isdir(dirpath):
+        raise click.ClickException("Filepath given is invalid")
+    path_prefix = "" if dirpath == "./" else dirpath
+    include_path = bool(abs_path) and bool(
+        re.search(r"^t(rue)?$", abs_path, flags=re.IGNORECASE)
+    )
+
+    if position == "append":
+        out_name = f"{filename}{add}{extension}"
+    elif position == "prepend":
+        out_name = f"{add}{filename}{extension}"
+    elif position == "replace":
+        out_name = f"{add}{extension}"
+    else:
+        raise click.ClickException("position must be one of: append, prepend, replace")
+
+    return f"{path_prefix}{out_name}" if include_path else out_name
 
 
 def rev_cmd(stdin: Iterable[str]):

@@ -129,7 +129,7 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:fail              |                    | —           | Shell-specific                               |
 | ds:field_replace     | `ds field_replace` | ✅          | Supports [FILE] or stdin, expression/key/pattern |
 | ds:fieldcounts       | `ds field_counts`  | ✅          |                                              |
-| ds:filename_str      |                    | —           |                                              |
+| ds:filename_str      | `ds filename_str`  | ✅          | Add text to filename preserving extension/path |
 | ds:fit               | `ds fit`           | STUB        | All methods are stubs                        |
 | ds:fsrc              |                    | —           | Shell-specific                               |
 | ds:gexec             |                    | —           |                                              |

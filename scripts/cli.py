@@ -645,7 +645,6 @@ def newfs(args):
     Syntax: ``[FILE] [newfs=,]``; with piped input, first arg is NEWFS.
     """
     from scripts.simple_commands import newfs_cmd
-
     stdin_data = None if sys.stdin.isatty() else sys.stdin.read()
     newfs_cmd(tuple(args), stdin_data=stdin_data)
 
@@ -660,8 +659,24 @@ def path_elements(filepath):
 
     Example:  ``ds . path_elements ./foo/bar.txt`` → ``./foo/\tbar\t.txt``
     """
-    from scripts.simple_commands import path_elements_cmd
-    path_elements_cmd(os.path.normpath(filepath))
+    from scripts.simple_commands import path_elements_parts
+
+    dir_out, stem, suffix = path_elements_parts(os.path.normpath(filepath))
+    click.echo(f"{dir_out}\t{stem}\t{suffix}", nl=False)
+
+
+@cli.command(name="filename_str")
+@click.argument("filepath")
+@click.argument("add")
+@click.argument("position", required=False, default="append")
+@click.argument("abs_path", required=False, default="t")
+def filename_str(filepath, add, position, abs_path):
+    """
+    Add text to a filename while preserving extension and optional path.
+    """
+    from scripts.simple_commands import filename_str_cmd
+
+    click.echo(filename_str_cmd(filepath, add, position=position, abs_path=abs_path), nl=False)
 
 
 @cli.command(name="todo")
@@ -673,7 +688,6 @@ def todo(paths):
     Uses ``ripgrep`` when available (see :mod:`scripts.tool_availability`); otherwise scans in Python.
     """
     from scripts.simple_commands import run_todo
-
     code = run_todo(tuple(paths))
     if code:
         sys.exit(code)
