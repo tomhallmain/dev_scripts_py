@@ -7,11 +7,26 @@ from urllib.parse import quote_plus
 
 import click
 
+from scripts.DataFile import DataFile
+
 
 def rev_cmd(stdin: Iterable[str]):
     lines = [line.rstrip("\n") for line in stdin]
     for line in reversed(lines):
         click.echo(line)
+
+
+def decap_stdout(n_remove: int, path_candidate: Optional[str], stdin_text: Optional[str]) -> None:
+    """Drop the first *n_remove* lines from a file or stdin (``ds:decap``)."""
+    try:
+        df = DataFile.from_cli_file_or_stdin(path_candidate, stdin_text)
+    except Exception as e:
+        raise click.ClickException(str(e)) from e
+    try:
+        lines = df.read_raw_lines()
+        click.echo("".join(lines[n_remove:]), nl=False)
+    finally:
+        df.cleanup_temp_file()
 
 
 def join_by_cmd(delimiter: str, values: Tuple[str, ...], stdin_data: Optional[str] = None):

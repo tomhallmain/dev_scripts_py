@@ -586,6 +586,27 @@ def cp_clipboard():
     copy_stdin_to_clipboard()
 
 
+@cli.command(name="decap")
+@click.argument("args", nargs=-1)
+def decap(args):
+    """
+    Remove the first *n* lines from a file or stdin (default *n* is 1).
+
+    ``FILE [n_lines]`` or ``… | ds . decap [n_lines]`` (``n_lines`` = number of lines to drop).
+    """
+    from scripts.simple_commands import decap_stdout
+    from scripts.utils import parse_decap_args
+
+    stdin_text = None if sys.stdin.isatty() else sys.stdin.read()
+    targs = tuple(args)
+    path_candidate = targs[0] if targs else None
+    try:
+        n_remove = parse_decap_args(targs, stdin_text)
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
+    decap_stdout(n_remove, path_candidate, stdin_text)
+
+
 @cli.command(name="iter")
 @click.argument('text')
 @click.argument('n', required=False, default=1, type=int)

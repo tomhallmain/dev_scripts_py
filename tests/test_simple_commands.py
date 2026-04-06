@@ -9,6 +9,7 @@ t_basic.sh references:
 - unicode: ds:unicode "cats😼😻" / pipe / hex (\\U… and %… forms)
 - embrace: ds:embrace 'test' / pipe → ``{test}``
 - cp: ``data | ds . cp`` → clipboard (UTF-8)
+- decap: drop first *n* lines from file or stdin
 """
 from __future__ import annotations
 
@@ -250,6 +251,28 @@ def test_cp_preserves_utf8(mock_copy: object, runner: CliRunner) -> None:
     result = runner.invoke(cli, [".", "cp"], input=text, catch_exceptions=False)
     assert result.exit_code == 0
     mock_copy.assert_called_once_with(text)
+
+
+# --- ds:decap ---
+
+
+def test_decap_file_default_removes_one_line(tmp_path, runner: CliRunner) -> None:
+    p = tmp_path / "t.txt"
+    p.write_text("a\nb\nc\n", encoding="utf-8")
+    result = runner.invoke(cli, [".", "decap", str(p)], catch_exceptions=False)
+    assert result.exit_code == 0
+    assert result.output == "b\nc\n"
+
+
+def test_decap_stdin_removes_n_lines(runner: CliRunner) -> None:
+    result = runner.invoke(
+        cli,
+        [".", "decap", "2"],
+        input="1\n2\n3\n4\n",
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert result.output == "3\n4\n"
 
 
 # --- insert, line, goog, jira (Python port; not in t_basic.sh) ---

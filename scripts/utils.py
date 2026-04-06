@@ -4,6 +4,7 @@ import os
 import platform
 import re
 import sys
+from typing import Optional, Tuple
 
 
 def re_unescape(pattern: str) -> str:
@@ -12,6 +13,44 @@ def re_unescape(pattern: str) -> str:
     if unescape is not None:
         return unescape(pattern)
     return codecs.decode(pattern.encode("latin1"), "unicode_escape")
+
+
+def parse_line_drop_count(s: Optional[str], *, default: int = 1) -> int:
+    """
+    Parse an optional non-negative integer (e.g. ``n_lines`` to drop from the top of a file).
+    ``None`` or ``""`` returns ``default``. Used by ``ds decap`` and similar commands.
+    """
+    if s is None or s == "":
+        return default
+    if not re.fullmatch(r"-?\d+", s):
+        raise ValueError("n_lines must be an integer")
+    n = int(s)
+    if n < 0:
+        raise ValueError("n_lines must be non-negative")
+    return n
+
+
+def parse_decap_args(args: Tuple[str, ...], stdin_text: Optional[str]) -> int:
+    """
+    Return how many leading lines ``ds decap`` should remove. Validates argument counts.
+
+    ``stdin_text`` is ``None`` when stdin was not read (TTY); otherwise it is the result of
+    ``sys.stdin.read()`` (possibly ``""``).
+    """
+    args = tuple(args)
+    if stdin_text is None:
+        if not args:
+            raise ValueError("decap requires a FILE or data on stdin")
+        if len(args) > 2:
+            raise ValueError("too many arguments; expected FILE [n_lines]")
+        return parse_line_drop_count(args[1] if len(args) > 1 else None)
+    if stdin_text == "" and args and os.path.isfile(args[0]):
+        if len(args) > 2:
+            raise ValueError("too many arguments; expected FILE [n_lines]")
+        return parse_line_drop_count(args[1] if len(args) > 1 else None)
+    if len(args) > 1:
+        raise ValueError("with stdin, at most one argument is allowed (n_lines)")
+    return parse_line_drop_count(args[0] if args else None)
 
 
 class _Getch:
