@@ -865,24 +865,32 @@ def stagger(args, stag_size):
 
 
 @cli.command()
-@click.argument('file', type=click.Path(exists=True))
+@click.argument("args", nargs=-1, required=False)
 @click.option('--y-keys', '-y', required=True, help="Comma-separated y-axis key fields")
 @click.option('--x-keys', '-x', required=True, help="Comma-separated x-axis key fields")
 @click.option('--z-keys', '-z', default=None, help="Comma-separated z-axis value fields")
 @click.option('--agg-type', '-a', default=None, type=click.Choice(['count', 'sum', 'product', 'mean']),
               help="Aggregation type")
 @wip
-def pivot(file, y_keys, x_keys, z_keys, agg_type):
+def pivot(args, y_keys, x_keys, z_keys, agg_type):
     """
-    Pivot tabular data.
+    Pivot tabular data: optional ``FILE`` or stdin (relative paths resolved).
 
-    Example:  ds . pivot data.csv -y 1 -x 2
+    Example::
+
+        ds . pivot data.csv -y 1 -x 2
+        cat data.txt | ds . pivot -y 2 -x 1
     """
-    from scripts.pivot import Pivot
-    file = Utils.resolve_relative_path(file)
-    p = Pivot(file, y_keys, x_keys, z_keys=z_keys, agg_type=agg_type)
-    with open(file, 'r') as f:
-        p.data = [line.strip().split() for line in f]
+    from scripts.pivot import Pivot, load_pivot_rows
+
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        extra_arg_warn=EXTRA_ARG_WARN_FIRST_FILE_ONLY,
+    )
+    data_file = ctx.to_data_file()
+    p = Pivot(data_file.file_path, y_keys, x_keys, z_keys=z_keys, agg_type=agg_type)
+    p.data = load_pivot_rows(data_file.file_path)
     p.pivot()
     p.print_pivot()
 

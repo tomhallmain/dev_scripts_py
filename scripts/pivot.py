@@ -1,3 +1,9 @@
+def load_pivot_rows(file_path: str) -> list[list[str]]:
+    """Load whitespace-split rows from ``file_path`` (UTF-8)."""
+    with open(file_path, encoding="utf-8", errors="replace") as f:
+        return [line.strip().split() for line in f]
+
+
 class Pivot:
     COUNT = "count"
     SUM = "sum"
