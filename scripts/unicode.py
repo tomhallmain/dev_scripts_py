@@ -8,7 +8,11 @@ from __future__ import annotations
 import sys
 from typing import Literal
 
+from scripts.cli_arg_parse_utils import CliArgContext
+
 Mode = Literal["codepoint", "hex", "octet"]
+
+KNOWN_MODES = frozenset({"codepoint", "hex", "octet"})
 
 
 def format_unicode(text: str, mode: Mode = "codepoint") -> str:
@@ -30,19 +34,18 @@ def format_unicode(text: str, mode: Mode = "codepoint") -> str:
     raise ValueError(f"unknown mode: {mode!r}")
 
 
-def run_unicode(argv: tuple[str, ...] | list[str]) -> None:
+def run_unicode(ctx: CliArgContext) -> None:
     """CLI entry: ``[]`` → stdin; ``[mode]`` if mode is codepoint|hex|octet → stdin; else ``[text]`` or ``[text, mode]``."""
     import click
 
-    known: frozenset[str] = frozenset({"codepoint", "hex", "octet"})
-    args = tuple(argv)
+    args = ctx.args
 
     if not args:
-        raw = sys.stdin.read()
+        raw = ctx.stdin_text
         mode: Mode = "codepoint"
     elif len(args) == 1:
-        if args[0] in known:
-            raw = sys.stdin.read()
+        if args[0] in KNOWN_MODES:
+            raw = ctx.stdin_text
             mode = args[0]  # type: ignore[assignment]
         else:
             raw = args[0]
@@ -50,13 +53,11 @@ def run_unicode(argv: tuple[str, ...] | list[str]) -> None:
     else:
         raw = args[0]
         m = args[1]
-        if m not in known:
-            raise click.ClickException(f"conversion must be one of {sorted(known)}, got {m!r}")
+        if m not in KNOWN_MODES:
+            raise click.ClickException(
+                f"conversion must be one of {sorted(KNOWN_MODES)}, got {m!r}"
+            )
         mode = m  # type: ignore[assignment]
 
     text = raw.rstrip("\n\r")
     click.echo(format_unicode(text, mode), nl=True)
-
-
-if __name__ == "__main__":
-    run_unicode(tuple(sys.argv[1:]))

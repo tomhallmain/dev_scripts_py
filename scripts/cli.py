@@ -4,6 +4,7 @@ import os
 import sys
 
 from scripts.case import TextCaseConverter
+from scripts.cli_arg_parse_utils import CliArgContext, PathCandidatePredicate
 from scripts.DataFile import DataFile
 from scripts.dup_files import dups_main
 from scripts.field_counts import FieldsCounter
@@ -12,7 +13,6 @@ from scripts.index import index_main
 from scripts.join import Join
 from scripts.kill_port import kill_port_main
 from scripts.move import move_main
-from scripts.transpose import DataTransposer
 from scripts.utils import Utils
 
 
@@ -263,29 +263,46 @@ def inferfs(filepath, custom=True, file_ext=True, high_certainty=False):
 
 
 @cli.command()
-@click.argument('filepath', type=click.File(), required=False)
+@click.argument("args", nargs=-1, required=False)
 @click.option('--field-sep', '-s', default=None)
 @click.option('--header', '-h', default=False)
-def index(filepath, field_sep, header):
+def index(args, field_sep, header):
     """
-    Print lines indexed: ds index [filepath]
+    Print lines indexed: optional ``FILE`` or stdin (relative paths resolved).
     """
-    data_file = DataFile(filepath, field_sep)
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        extra_arg_warn=(
+            1,
+            "Warning: ignoring {extra} extra argument(s); only the first is used as FILE if present.",
+        ),
+        field_separator=field_sep,
+    )
+    data_file = ctx.to_data_file()
     data_file.get_field_separator()
     index_main(data_file, header)
 
 @cli.command(aliases=["t"])
-@click.argument('file', type=click.File(), required=False)
+@click.argument("args", nargs=-1, required=False)
 @click.option('--field-sep', '-s', default=None)
 @click.option('--ofs', default=None)
-def transpose(filepath, field_sep, ofs):
+def transpose(args, field_sep, ofs):
     """
-    Transpose lines: ds transpose [filepath]
+    Transpose lines: optional ``FILE`` or stdin (relative paths resolved).
     """
-    data_file = DataFile(filepath, field_sep)
-    if ofs is None:
-        ofs = data_file.get_field_separator()
-    DataTransposer(data_file, ofs=ofs).transpose()
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        extra_arg_warn=(
+            1,
+            "Warning: ignoring {extra} extra argument(s); only the first is used as FILE if present.",
+        ),
+        field_separator=field_sep,
+        output_field_separator=ofs,
+    )
+    data_file = ctx.to_data_file()
+    data_file.print_transposed()
 
 
 @cli.command(aliases=["jn"])
@@ -322,21 +339,28 @@ def join(file1, file2, field_sep=None, ofs=None, header=False, verbose=False, jo
 
 
 @cli.command()
-@click.argument('file', type=click.File(), required=False)
+@click.argument("args", nargs=-1, required=False)
 @click.option('--field-sep', '-s', default=None)
 @click.option('--ofs', default=None)
 @click.option('--fields', '-f', default="0")
 @click.option('--min', '-m', default=1)
 @click.option('--only-vals', '-v', is_flag=True)
-def field_counts(file, field_sep, ofs, fields="0", min=1, only_vals=False):
+def field_counts(args, field_sep, ofs, fields="0", min=1, only_vals=False):
     """
-    Count fields in data: ds field_counts [file]
+    Count fields in data: optional ``FILE`` or stdin (relative paths resolved).
     """
-    path = file.name if hasattr(file, "name") else file
-    data_file = DataFile(path, field_sep)
-    if ofs is None:
-        ofs = data_file.get_field_separator()
-    FieldsCounter(data_file, ofs=ofs, fields=fields, min=min, only_vals=only_vals).run()
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        extra_arg_warn=(
+            1,
+            "Warning: ignoring {extra} extra argument(s); only the first is used as FILE if present.",
+        ),
+        field_separator=field_sep,
+        output_field_separator=ofs,
+    )
+    data_file = ctx.to_data_file()
+    FieldsCounter(data_file, fields=fields, min=min, only_vals=only_vals).run()
 
 
 # @cli.command()
@@ -571,8 +595,8 @@ def embrace(args):
     With a TTY: ``STR [LEFT] [RIGHT]`` (``ds . embrace test`` → ``{test}``).
     """
     from scripts.simple_commands import embrace_cmd
-    stdin_data = None if sys.stdin.isatty() else sys.stdin.read()
-    embrace_cmd(tuple(args), stdin_data)
+    ctx = CliArgContext.from_click(tuple(args), path_rule=PathCandidatePredicate.NONE)
+    embrace_cmd(ctx)
 
 
 @cli.command(name="cp")
@@ -594,17 +618,10 @@ def decap(args):
 
     ``FILE [n_lines]`` or ``… | ds . decap [n_lines]`` (``n_lines`` = number of lines to drop).
     """
-    from scripts.simple_commands import decap_stdout
-    from scripts.utils import parse_decap_args
-
-    stdin_text = None if sys.stdin.isatty() else sys.stdin.read()
-    targs = tuple(args)
-    path_candidate = targs[0] if targs else None
-    try:
-        n_remove = parse_decap_args(targs, stdin_text)
-    except ValueError as e:
-        raise click.ClickException(str(e)) from e
-    decap_stdout(n_remove, path_candidate, stdin_text)
+    from scripts.simple_commands import decap_stdout, parse_decap
+    ctx = CliArgContext.from_click(tuple(args))
+    df, n_remove = parse_decap(ctx)
+    decap_stdout(df, n_remove)
 
 
 @cli.command(name="iter")
@@ -734,21 +751,29 @@ def matches(file1, file2, key, fs):
 
 
 @cli.command(name="power")
-@click.argument('file', type=click.Path(exists=True))
+@click.argument("args", nargs=-1, required=False)
 @click.option('--min', '-m', 'min_count', default=0, help="Minimum occurrence count")
 @click.option('--return-fields', '-r', is_flag=True, help="Return field proportions instead of counts")
 @click.option('--invert', '-i', is_flag=True, help="Invert the min filter")
 @click.option('--choose', '-c', type=int, default=None, help="Restrict combination size")
-def power(file, min_count, return_fields, invert, choose):
+def power(args, min_count, return_fields, invert, choose):
     """
     Combinatorial frequency analysis of data field values.
 
+    Optional ``FILE`` or stdin (relative paths resolved).
+
     Example:  ds . power data.txt --min 2 --choose 2
     """
-    from scripts.DataFile import DataFile
     from scripts.power import DataAnalyzer
-    file = Utils.resolve_relative_path(file)
-    data_file = DataFile(file)
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        extra_arg_warn=(
+            1,
+            "Warning: ignoring {extra} extra argument(s); only the first is used as FILE if present.",
+        ),
+    )
+    data_file = ctx.to_data_file()
     analyzer = DataAnalyzer(data_file, min=min_count, return_fields=return_fields, invert=invert, choose=choose)
     analyzer.analyze()
     analyzer.print_results()
@@ -789,7 +814,8 @@ def unicode_cmd(args):
         ds . unicode "cats😼😻" hex
     """
     from scripts.unicode import run_unicode
-    run_unicode(args)
+    ctx = CliArgContext.from_click(tuple(args), path_rule=PathCandidatePredicate.NONE)
+    run_unicode(ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -797,48 +823,35 @@ def unicode_cmd(args):
 # ---------------------------------------------------------------------------
 
 @cli.command()
+@click.argument("args", nargs=-1, required=False)
 @click.option('--print-bases', '-p', is_flag=True, help="Include base nodes in output")
 @wip
-def graph(print_bases):
+def graph(args, print_bases):
     """
-    Extract graph relationships from DAG base data (reads from stdin).
+    Extract graph relationships from DAG base data: optional ``FILE`` or stdin.
 
-    Input: lines of "child parent" pairs on stdin.
+    Input: lines of ``child parent`` pairs (whitespace-separated); single-token lines mark bases.
 
-    Example:  cat edges.txt | ds . graph --print-bases
+    Examples::
+
+        cat edges.txt | ds . graph --print-bases
+        ds . graph edges.txt -p
     """
-    from scripts.graph import backtrace
-    shoots = {}
-    bases = {}
-    cycles = {}
+    from scripts.graph import GraphDagBacktrace
 
-    for line in sys.stdin:
-        line = line.strip()
-        if line:
-            parts = line.split()
-            if len(parts) > 1:
-                shoots[parts[0]] = parts[1]
-                bases[parts[1]] = 1
-            elif len(parts) == 1:
-                bases[parts[0]] = 1
-
-    if print_bases:
-        for base in bases:
-            if base not in shoots:
-                click.echo(base)
-
-    for shoot in shoots:
-        if shoots[shoot] and (print_bases or shoot not in bases):
-            if shoot == shoots[shoot]:
-                cycles[shoot] = 1
-                continue
-            click.echo(backtrace(shoot, shoots[shoot], shoots))
-
-    if cycles:
-        click.echo(f"WARNING: {len(cycles)} cycles found!")
-        for cycle in cycles:
-            click.echo(f"CYCLENODE__ {cycle}")
-        sys.exit(1)
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        extra_arg_warn=(
+            1,
+            "Warning: ignoring {extra} extra argument(s); only the first is used as FILE if present.",
+        ),
+    )
+    data_file = ctx.to_data_file()
+    with open(data_file.file_path, encoding="utf-8", errors="replace") as f:
+        code = GraphDagBacktrace(print_bases=print_bases, echo=click.echo).run(f)
+    if code:
+        sys.exit(code)
 
 
 @cli.command()
@@ -945,20 +958,31 @@ def sortm():
 
 
 @cli.command(name="subsep")
-@click.argument('filepath', type=click.Path(exists=True))
-@click.argument('subsep_pattern')
+@click.argument("args", nargs=-1, required=True)
 @click.option('--nomatch-handler', '-n', default=r'\s+', help="Fallback split pattern for non-matching lines")
 @stub
-def subsep(filepath, subsep_pattern, nomatch_handler):
+def subsep(args, nomatch_handler):
     """
     Extend fields by a common sub-separator.
+
+    ``FILE SUBSEP_PATTERN`` or ``SUBSEP_PATTERN`` with data on stdin (relative paths resolved).
 
     Example:  ds . subsep data.txt ":"
     """
     from scripts.subseparator import SubseparatorFinder
-    filepath = Utils.resolve_relative_path(filepath)
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        tested_first_arg_file_pair_rules=True,
+        extra_arg_warn=(
+            2,
+            "Warning: ignoring {extra} extra argument(s) after FILE and SUBSEP_PATTERN.",
+        ),
+    )
+    subsep_pattern = ctx.shifted_arg(0)
     finder = SubseparatorFinder(subsep_pattern=subsep_pattern, nomatch_handler=nomatch_handler)
-    finder.process_file(filepath)
+    df = ctx.to_data_file()
+    finder.process_file(df.file_path)
 
 
 @cli.command(name="inferh")
@@ -971,21 +995,26 @@ def inferh():
 
 
 @cli.command(name="cardinality")
-@click.argument('filepath', type=click.Path(exists=True))
+@click.argument("args", nargs=-1, required=False)
 @stub
-def cardinality(filepath):
+def cardinality(args):
     """
     Calculate cardinality (distinct values) per field.
 
+    Optional ``FILE`` or stdin (relative paths resolved).
+
     Example:  ds . cardinality data.txt
     """
-    from scripts.cardinality import Cardinality
-    filepath = Utils.resolve_relative_path(filepath)
-    c = Cardinality()
-    with open(filepath, 'r') as f:
-        for line in f:
-            c.process_line(line)
-    c.print_cardinality()
+    from scripts.simple_commands import cardinality_cmd
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        extra_arg_warn=(
+            1,
+            "Warning: ignoring {extra} extra argument(s); only the first is used as FILE if present.",
+        ),
+    )
+    cardinality_cmd(ctx)
 
 
 @cli.command(name="prod")

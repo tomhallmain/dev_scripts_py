@@ -19,6 +19,7 @@ import pytest
 from click.testing import CliRunner
 
 from scripts.cli import cli
+from scripts.cli_arg_parse_utils import CliArgContext, PathCandidatePredicate
 from scripts.simple_commands import embrace_cmd
 from scripts.unicode import format_unicode
 
@@ -183,7 +184,13 @@ def test_embrace_cmd_tty_matches_t_basic() -> None:
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        embrace_cmd(("test",), None)
+        embrace_cmd(
+            CliArgContext(
+                args=("test",),
+                stdin_text=None,
+                path_candidate_rule=PathCandidatePredicate.NONE,
+            )
+        )
     assert buf.getvalue().rstrip("\n") == "{test}"
 
 
@@ -273,6 +280,49 @@ def test_decap_stdin_removes_n_lines(runner: CliRunner) -> None:
     )
     assert result.exit_code == 0
     assert result.output == "3\n4\n"
+
+
+# --- cardinality (CliArgContext + DataFile) ---
+
+
+def test_cardinality_file_and_stdin_smoke(tmp_path, runner: CliRunner) -> None:
+    p = tmp_path / "c.txt"
+    p.write_text("a b\n", encoding="utf-8")
+    r_file = runner.invoke(cli, [".", "cardinality", str(p)], catch_exceptions=False)
+    assert r_file.exit_code == 0
+    r_stdin = runner.invoke(cli, [".", "cardinality"], input="a b\n", catch_exceptions=False)
+    assert r_stdin.exit_code == 0
+
+
+def test_transpose_file_and_stdin_smoke(tmp_path, runner: CliRunner) -> None:
+    p = tmp_path / "tr.txt"
+    p.write_text("a b\nc d\n", encoding="utf-8")
+    r_file = runner.invoke(cli, [".", "transpose", str(p)], catch_exceptions=False)
+    assert r_file.exit_code == 0
+    r_stdin = runner.invoke(cli, [".", "transpose"], input="x y\n", catch_exceptions=False)
+    assert r_stdin.exit_code == 0
+
+
+def test_index_file_and_stdin_smoke(tmp_path, runner: CliRunner) -> None:
+    p = tmp_path / "idx.txt"
+    p.write_text("a b\n", encoding="utf-8")
+    r_file = runner.invoke(cli, [".", "index", str(p)], catch_exceptions=False)
+    assert r_file.exit_code == 0
+    r_stdin = runner.invoke(cli, [".", "index"], input="x y\n", catch_exceptions=False)
+    assert r_stdin.exit_code == 0
+
+
+def test_cardinality_extra_args_warns(tmp_path, runner: CliRunner) -> None:
+    p = tmp_path / "c.txt"
+    p.write_text("x\n", encoding="utf-8")
+    result = runner.invoke(
+        cli,
+        [".", "cardinality", str(p), "ignored", "also"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert "Warning: ignoring" in result.output
+    assert "2 extra" in result.output
 
 
 # --- insert, line, goog, jira (Python port; not in t_basic.sh) ---

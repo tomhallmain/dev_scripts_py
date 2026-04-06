@@ -12,7 +12,9 @@ import io
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
 
+from scripts.cli import cli
 from scripts.DataFile import DataFile
 from scripts.field_counts import FieldsCounter
 from scripts.field_uniques import FieldUniques
@@ -82,8 +84,8 @@ a
 def _run_field_counts(fields: str, min_count: int) -> str:
     Utils.set_start_dir(str(TESTS_DIR.parent))
     df = DataFile(str(COMPANY_CSV))
-    ofs = df.get_field_separator()
-    fc = FieldsCounter(df, ofs=ofs, fields=fields, min=min_count)
+    df.get_field_separator()
+    fc = FieldsCounter(df, fields=fields, min=min_count)
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         fc.run()
@@ -108,6 +110,11 @@ def _run_field_uniques(
         return buf.getvalue()
     finally:
         p.unlink(missing_ok=True)
+
+
+@pytest.fixture
+def runner() -> CliRunner:
+    return CliRunner()
 
 
 def test_company_funding_csv_exists() -> None:
@@ -150,3 +157,13 @@ def test_uniq_desc_field1_matches_t_fieldcounts() -> None:
 def test_field_uniques_requires_data_file() -> None:
     with pytest.raises(TypeError, match="DataFile"):
         FieldUniques(object(), fields_spec="a")  # type: ignore[arg-type]
+
+
+def test_field_counts_cli_file_and_stdin_smoke(tmp_path: Path, runner: CliRunner) -> None:
+    """``ds field-counts`` with optional file or stdin via CliArgContext."""
+    p = tmp_path / "fc.txt"
+    p.write_text("a b\na c\n", encoding="utf-8")
+    r_file = runner.invoke(cli, [".", "field-counts", str(p)], catch_exceptions=False)
+    assert r_file.exit_code == 0
+    r_stdin = runner.invoke(cli, [".", "field-counts"], input="a b\n", catch_exceptions=False)
+    assert r_stdin.exit_code == 0

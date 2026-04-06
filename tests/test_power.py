@@ -21,7 +21,9 @@ from pathlib import Path
 from typing import Set, Tuple
 
 import pytest
+from click.testing import CliRunner
 
+from scripts.cli import cli
 from scripts.DataFile import DataFile
 from scripts.power import DataAnalyzer
 
@@ -268,3 +270,18 @@ def test_min_filter_includes_pair_when_occurrences_reach_min(tmp_path: Path) -> 
     p.write_text("x y\nx y\n", encoding="utf-8")
     out = _run_analyzer(p, min_count=2, return_fields=False, choose=2)
     assert "2 x y" in out
+
+
+@pytest.fixture
+def cli_runner() -> CliRunner:
+    return CliRunner()
+
+
+def test_power_cli_file_and_stdin_smoke(tmp_path: Path, cli_runner: CliRunner) -> None:
+    """``ds power`` with optional file or stdin via CliArgContext."""
+    p = tmp_path / "p.txt"
+    p.write_text("a b\n", encoding="utf-8")
+    r_file = cli_runner.invoke(cli, [".", "power", str(p)], catch_exceptions=False)
+    assert r_file.exit_code == 0
+    r_stdin = cli_runner.invoke(cli, [".", "power"], input="a b\n", catch_exceptions=False)
+    assert r_stdin.exit_code == 0

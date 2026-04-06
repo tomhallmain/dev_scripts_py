@@ -13,10 +13,15 @@ script’s file set).
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
+import click
 import pytest
+from click.testing import CliRunner
 
+from scripts.cli import cli
+from scripts.cli_arg_parse_utils import CliArgContext, PathCandidatePredicate
 from scripts.subseparator import SubseparatorFinder
 
 # ---------------------------------------------------------------------------
@@ -85,6 +90,130 @@ def test_subsep_fixture_files_exist() -> None:
     assert TESTCRIME_CSV.is_file(), f"Missing {TESTCRIME_CSV}"
 
 
+@pytest.fixture
+def cli_runner() -> CliRunner:
+    return CliRunner()
+
+
+def test_subsep_cli_file_and_pattern(cli_runner: CliRunner) -> None:
+    """``FILE SUBSEP_PATTERN`` uses :class:`~scripts.DataFile.DataFile` (resolved path)."""
+    result = cli_runner.invoke(
+        cli,
+        [".", "subsep", str(SUBSEPS_TEST), "SEP"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+
+def test_subsep_cli_stdin_single_pattern(cli_runner: CliRunner) -> None:
+    """``SUBSEP_PATTERN`` with piped body (``CliArgContext`` + stdin)."""
+    result = cli_runner.invoke(
+        cli,
+        [".", "subsep", "SEP"],
+        input="a SEP b\n",
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+
+def test_subsep_cli_two_args_first_not_a_file(cli_runner: CliRunner) -> None:
+    result = cli_runner.invoke(
+        cli,
+        [".", "subsep", "not_a_real_file_12345.txt", "SEP"],
+        catch_exceptions=True,
+    )
+    assert result.exit_code != 0
+    assert "first argument must be an existing file" in (result.output or "")
+
+
+def test_cli_arg_context_tested_first_arg_resolves_file() -> None:
+    p = str(SUBSEPS_TEST)
+    ctx = CliArgContext((p, "pat"), None, PathCandidatePredicate.TESTED_FIRST_ARG)
+    assert ctx.resolved_path is not None
+    assert os.path.isfile(ctx.resolved_path)
+
+
+def test_cli_arg_context_shifted_arg_zero_matches_file_plus_pattern() -> None:
+    p = str(SUBSEPS_TEST)
+    ctx = CliArgContext((p, "SEP"), None, PathCandidatePredicate.TESTED_FIRST_ARG)
+    assert ctx.shifted_arg(0) == "SEP"
+
+
+def test_cli_arg_context_shifted_arg_zero_matches_pattern_only() -> None:
+    ctx = CliArgContext(("SEP",), None, PathCandidatePredicate.TESTED_FIRST_ARG)
+    assert ctx.resolved_path is None
+    assert ctx.shifted_arg(0) == "SEP"
+
+
+def test_cli_arg_context_shifted_arg_requires_tested_first() -> None:
+    ctx = CliArgContext(("x",), None, PathCandidatePredicate.FIRST_ARG)
+    with pytest.raises(ValueError, match="TESTED_FIRST_ARG"):
+        ctx.shifted_arg(0)
+
+
+def test_cli_arg_context_tested_first_arg_unknown_is_none() -> None:
+    ctx = CliArgContext(
+        ("not_a_real_file_98765.txt",),
+        None,
+        PathCandidatePredicate.TESTED_FIRST_ARG,
+    )
+    assert ctx.resolved_path is None
+    assert ctx.path_candidate is None
+
+
+def test_cli_arg_context_allowed_lengths_raises() -> None:
+    with pytest.raises(click.ClickException, match="wrong count"):
+        CliArgContext(
+            ("a", "b", "c"),
+            None,
+            PathCandidatePredicate.TESTED_FIRST_ARG,
+            allowed_lengths=(1, 2),
+            bad_length_message="wrong count",
+        )
+
+
+def test_cli_arg_context_tested_first_allowed_1_2_two_args_first_not_file_raises() -> None:
+    with pytest.raises(click.ClickException, match="first argument must be an existing file"):
+        CliArgContext(
+            ("not_a_real_file_99999.txt", "SEP"),
+            None,
+            PathCandidatePredicate.TESTED_FIRST_ARG,
+            tested_first_arg_file_pair_rules=True,
+        )
+
+
+def test_cli_arg_context_tested_first_allowed_1_2_one_arg_existing_file_raises() -> None:
+    p = str(SUBSEPS_TEST)
+    with pytest.raises(click.ClickException, match="FILE SUBSEP_PATTERN"):
+        CliArgContext(
+            (p,),
+            None,
+            PathCandidatePredicate.TESTED_FIRST_ARG,
+            tested_first_arg_file_pair_rules=True,
+        )
+
+
+def test_subsep_cli_three_args_bad_first_file_still_errors(cli_runner: CliRunner) -> None:
+    result = cli_runner.invoke(
+        cli,
+        [".", "subsep", "a", "b", "c"],
+        catch_exceptions=True,
+    )
+    assert result.exit_code != 0
+    assert "first argument must be an existing file" in (result.output or "")
+
+
+def test_subsep_cli_extra_args_after_file_and_pattern_warns(cli_runner: CliRunner) -> None:
+    result = cli_runner.invoke(
+        cli,
+        [".", "subsep", str(SUBSEPS_TEST), "SEP", "extra", "more"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert "Warning: ignoring" in result.output
+    assert "2 extra" in result.output
+
+
 def test_empty_subsep_pattern_exits() -> None:
     """Missing pattern: shell reports ERROR; Python prints and sys.exit(1)."""
     with pytest.raises(SystemExit) as exc:
@@ -148,7 +277,9 @@ def test_selective_fields_csv_matches_t_subsep() -> None:
     assert T_SUBSEP_SELECTIVE_FIELDS_CSV
 
 
-@pytest.mark.skip(reason="Piped stdin and subsep CLI not wired like shell ds:subsep.")
+@pytest.mark.skip(
+    reason="Shell output parity (reo/OFS) not implemented; stdin+pattern is wired in CLI."
+)
 def test_piped_slash_field_splitting_matches_t_subsep() -> None:
     """t_subsep.sh L34–37."""
     assert T_SUBSEP_PIPE_SLASH == "a b c d"

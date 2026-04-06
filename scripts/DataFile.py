@@ -3,6 +3,7 @@ import os
 import re
 import sys
 import tempfile
+from typing import Optional
 
 from .utils import Utils
 from .infer_field_separator import SeparatorInference
@@ -33,7 +34,13 @@ class DataFile:
         DataFile.CACHE.append(self)
 
     @staticmethod
-    def from_cli_file_or_stdin(path_candidate, stdin_text):
+    def from_cli_file_or_stdin(
+        path_candidate,
+        stdin_text,
+        *,
+        field_separator=None,
+        output_field_separator=None,
+    ):
         """
         Resolve **file vs stdin** for typical ``ds`` commands: optional ``FILE`` plus piped body.
 
@@ -45,14 +52,21 @@ class DataFile:
 
         ``path_candidate`` may be a first positional that is *not* a file when stdin has content;
         it is ignored unless the empty-string + file heuristic applies.
+
+        Optional ``field_separator`` / ``output_field_separator`` are passed through to
+        :class:`DataFile` (output defaults to input separator when omitted).
         """
         if stdin_text is None:
             if not path_candidate:
                 raise Exception("file path required when stdin is a TTY")
-            return DataFile(path_candidate)
-        if stdin_text == "" and path_candidate and os.path.isfile(path_candidate):
-            return DataFile(path_candidate)
-        return DataFile(None, stdin_text=stdin_text)
+            df = DataFile(path_candidate, field_separator)
+        elif stdin_text == "" and path_candidate and os.path.isfile(path_candidate):
+            df = DataFile(path_candidate, field_separator)
+        else:
+            df = DataFile(None, field_separator, stdin_text=stdin_text)
+        if output_field_separator is not None:
+            df.output_field_separator = output_field_separator
+        return df
 
     def check_and_setup(self):
         if not self.is_stdin:
@@ -172,6 +186,10 @@ class DataFile:
                 Utils.debug_print("Temp file was not removed: " + self.file_path, "DataFile")
 
     def transpose(self, max_nf=None):
+        if not self.data:
+            if not self.field_separator:
+                self.get_field_separator()
+            self.get_data()
         transposed_data = []
         if max_nf == None or max_nf < 0:
             max_nf = self.max_nf
@@ -184,6 +202,15 @@ class DataFile:
                     transposed_line.append('')
             transposed_data.append(transposed_line)
         return transposed_data
+
+    def print_transposed(self, *, output_sep: Optional[str] = None) -> None:
+        """Infer separator if needed, load rows, transpose, print one line per original column."""
+        self.get_field_separator()
+        sep = output_sep if output_sep is not None else (
+            self.output_field_separator or self.field_separator or ""
+        )
+        for line in self.transpose():
+            print(sep.join(str(x) for x in line))
 
     @staticmethod
     def cleanup():

@@ -7,6 +7,12 @@ from urllib.parse import quote_plus
 
 import click
 
+from scripts.cli_arg_parse_utils import (
+    ArgCheck,
+    CliArgContext,
+    apply_arg_predicates,
+    parse_non_negative_int_arg,
+)
 from scripts.DataFile import DataFile
 
 
@@ -16,17 +22,57 @@ def rev_cmd(stdin: Iterable[str]):
         click.echo(line)
 
 
-def decap_stdout(n_remove: int, path_candidate: Optional[str], stdin_text: Optional[str]) -> None:
-    """Drop the first *n_remove* lines from a file or stdin (``ds:decap``)."""
-    try:
-        df = DataFile.from_cli_file_or_stdin(path_candidate, stdin_text)
-    except Exception as e:
-        raise click.ClickException(str(e)) from e
+def decap_stdout(df: DataFile, n_remove: int) -> None:
+    """Drop the first *n_remove* lines (``ds:decap``); ``df`` comes from CLI parsing / :class:`DataFile`."""
     try:
         lines = df.read_raw_lines()
         click.echo("".join(lines[n_remove:]), nl=False)
     finally:
         df.cleanup_temp_file()
+
+
+DECAP_CHECKS_TTY: Tuple[ArgCheck, ...] = (
+    (lambda c: not c.args, "decap requires a FILE or data on stdin"),
+    (lambda c: len(c.args) > 2, "too many arguments; expected FILE [n_lines]"),
+)
+
+DECAP_CHECKS_EMPTY_STDIN_FILE: Tuple[ArgCheck, ...] = (
+    (lambda c: len(c.args) > 2, "too many arguments; expected FILE [n_lines]"),
+)
+
+DECAP_CHECKS_STDIN_PIPE: Tuple[ArgCheck, ...] = (
+    (lambda c: len(c.args) > 1, "with stdin, at most one argument is allowed (n_lines)"),
+)
+
+
+def parse_decap(ctx: CliArgContext) -> Tuple[DataFile, int]:
+    """
+    ``ds decap``: branch-specific checks, then :meth:`~scripts.cli_arg_parse_utils.CliArgContext.to_data_file`.
+    """
+    args = ctx.args
+    stdin_text = ctx.stdin_text
+
+    if stdin_text is None:
+        apply_arg_predicates(ctx, DECAP_CHECKS_TTY)
+        n_remove = parse_non_negative_int_arg(
+            args[1] if len(args) > 1 else None,
+            descriptor="n_lines",
+        )
+    elif stdin_text == "" and args and os.path.isfile(args[0]):
+        apply_arg_predicates(ctx, DECAP_CHECKS_EMPTY_STDIN_FILE)
+        n_remove = parse_non_negative_int_arg(
+            args[1] if len(args) > 1 else None,
+            descriptor="n_lines",
+        )
+    else:
+        apply_arg_predicates(ctx, DECAP_CHECKS_STDIN_PIPE)
+        n_remove = parse_non_negative_int_arg(
+            args[0] if args else None,
+            descriptor="n_lines",
+        )
+
+    df = ctx.to_data_file()
+    return df, n_remove
 
 
 def join_by_cmd(delimiter: str, values: Tuple[str, ...], stdin_data: Optional[str] = None):
@@ -39,20 +85,25 @@ def join_by_cmd(delimiter: str, values: Tuple[str, ...], stdin_data: Optional[st
     click.echo(delimiter.join(items), nl=False)
 
 
-def embrace_cmd(args: Tuple[str, ...], stdin_data: Optional[str]) -> None:
+def embrace_cmd(ctx: CliArgContext) -> None:
     """
     Enclose text with left/right delimiters (default ``{`` / ``}``).
 
-    ``stdin_data`` is ``None`` when stdin was a TTY (string form: ``str [left [right]]``).
-    Otherwise stdin was read (pipe): ``[left [right]]`` apply to each line, concatenated.
+    Uses :class:`~scripts.cli_arg_parse_utils.CliArgContext` (no file path; ``path_rule`` is
+    typically :attr:`~scripts.cli_arg_parse_utils.PathCandidatePredicate.NONE`).
+
+    ``ctx.stdin_text`` is ``None`` on a TTY (``STR [LEFT] [RIGHT]``). Otherwise stdin was read
+    (pipe): optional ``LEFT`` and ``RIGHT`` then each input line wrapped, concatenated.
     """
+    args = ctx.args
+    stdin_text = ctx.stdin_text
     left_default = "{"
     right_default = "}"
 
-    if stdin_data is not None:
+    if stdin_text is not None:
         left = args[0] if len(args) >= 1 and args[0] != "" else left_default
         right = args[1] if len(args) >= 2 and args[1] != "" else right_default
-        for line in stdin_data.splitlines():
+        for line in stdin_text.splitlines():
             click.echo(left + line + right, nl=False)
         return
 
@@ -163,3 +214,35 @@ def line_cmd(seed_cmds: Optional[str], line_cmds: str, ifs: str, stdin_data: Opt
             status = result.returncode
     if status:
         raise SystemExit(status)
+
+
+
+class Cardinality:
+    def __init__(self):
+        self._ = {}
+        self.__ = {}
+        self.max_nf = 0
+
+    def process_line(self, line):
+        fields = line.split()
+        for i, field in enumerate(fields, start=1):
+            if not self._.get((i, field)):
+                self._[(i, field)] = 1
+                self.__[i] = self.__.get(i, 0) + 1
+
+        if len(fields) > self.max_nf:
+            self.max_nf = len(fields)
+
+    def print_cardinality(self):
+        for i in range(1, self.max_nf + 1):
+            print(i, self.__.get(i, 0))
+
+
+def cardinality_cmd(ctx: CliArgContext):
+    df = ctx.to_data_file()
+    c = Cardinality()
+    with open(df.file_path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            c.process_line(line)
+    c.print_cardinality()
+
