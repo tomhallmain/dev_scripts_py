@@ -624,6 +624,31 @@ def decap(args):
     decap_stdout(df, n_remove)
 
 
+@cli.command(name="dostounix")
+@click.argument("files", nargs=-1, required=False)
+def dostounix(files):
+    """
+    Remove DOS CR line endings in place for file(s), or from stdin to stdout.
+    """
+    from scripts.simple_commands import dostounix_cmd
+    stdin_data = None if sys.stdin.isatty() else sys.stdin.read()
+    dostounix_cmd(tuple(files), stdin_data=stdin_data)
+
+
+@cli.command(name="newfs")
+@click.argument("args", nargs=-1, required=False)
+def newfs(args):
+    """
+    Convert field separators (for example TSV to CSV).
+
+    Syntax: ``[FILE] [newfs=,]``; with piped input, first arg is NEWFS.
+    """
+    from scripts.simple_commands import newfs_cmd
+
+    stdin_data = None if sys.stdin.isatty() else sys.stdin.read()
+    newfs_cmd(tuple(args), stdin_data=stdin_data)
+
+
 @cli.command(name="path_elements")
 @click.argument("filepath")
 def path_elements(filepath):

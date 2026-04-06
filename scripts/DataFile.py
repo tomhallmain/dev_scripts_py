@@ -4,6 +4,7 @@ import re
 import random
 import sys
 import tempfile
+from io import StringIO
 from typing import Optional
 
 from .utils import Utils
@@ -270,6 +271,23 @@ class DataFile:
                 )
             out_lines.append(fs.join(row))
         return "\n".join(out_lines)
+
+    def convert_field_separator(self, new_separator: str = ",") -> str:
+        """
+        Render rows using ``new_separator`` while preserving field structure.
+
+        For comma output, uses :mod:`csv` writer semantics so fields containing commas/quotes are
+        escaped correctly.
+        """
+        self.get_field_separator()
+        rows = self.get_data()
+        if new_separator == ",":
+            buf = StringIO()
+            w = csv.writer(buf, lineterminator="\n")
+            for row in rows:
+                w.writerow(row)
+            return buf.getvalue().rstrip("\n")
+        return "\n".join(new_separator.join(row) for row in rows)
 
     @staticmethod
     def cleanup():

@@ -121,7 +121,7 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:deps2             |                    | —           |                                              |
 | ds:diff              | `ds diff`          | STUB        | Runs side-by-side diff, colorized via `diff_color.py` |
 | ds:diff_fields       | `ds diff_fields`   | STUB        | References undefined globals in process_lines |
-| ds:dostounix         |                    | —           |                                              |
+| ds:dostounix         | `ds dostounix`     | ✅          | In-place for files; stdin->stdout normalized |
 | ds:dup_input         |                    | —           |                                              |
 | ds:dups              | `ds dup_files`     | ✅          |                                              |
 | ds:embrace           | `ds embrace`       | ✅          |                                              |
@@ -166,7 +166,7 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:matches           | `ds matches`       | ✅          | Two paths or one path + stdin; `-k` / `--key1` / `--key2`, `--verbose` |
 | ds:mini              |                    | —           |                                              |
 | ds:new               |                    | —           | Shell-specific                               |
-| ds:newfs             |                    | —           |                                              |
+| ds:newfs             | `ds newfs`         | ✅          | Convert field separators (file or stdin)     |
 | ds:nset              |                    | —           | Shell-specific; see `tool_availability` (Python) |
 | ds:ntype             |                    | —           | Shell-specific                               |
 | ds:path_elements     | `ds path_elements` | ✅          | Tab-separated dir / stem / suffix            |

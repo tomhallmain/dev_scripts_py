@@ -64,6 +64,94 @@ def decap_stdout(df: DataFile, n_remove: int) -> None:
         df.cleanup_temp_file()
 
 
+def _normalize_crlf_text(text: str) -> str:
+    # Match awk gsub(/\015$/, "") per line: strip only trailing CR before line end.
+    return text.replace("\r\n", "\n")
+
+
+def dostounix_cmd(
+    files: Tuple[str, ...],
+    *,
+    stdin_data: Optional[str],
+    echo: Optional[Callable[..., None]] = None,
+) -> None:
+    """
+    Remove DOS CRLF line endings.
+
+    - With stdin data and no files: write normalized content to stdout.
+    - With one or more files: rewrite each file in place.
+    """
+    echo = echo or click.echo
+    if stdin_data is not None and len(files) == 0:
+        echo(_normalize_crlf_text(stdin_data), nl=False)
+        return
+
+    if len(files) == 0:
+        raise click.ClickException("dostounix requires at least one FILE or piped stdin")
+
+    for fp in files:
+        if not os.path.isfile(fp):
+            raise click.ClickException(f"path provided is not a file: {fp}")
+        echo(f"Removing CR line endings in {fp}")
+        with open(fp, "r", encoding="utf-8", errors="replace", newline="") as f:
+            src = f.read()
+        normalized = _normalize_crlf_text(src)
+        with open(fp, "w", encoding="utf-8", newline="") as f:
+            f.write(normalized)
+
+
+def newfs_cmd(
+    args: Tuple[str, ...],
+    *,
+    stdin_data: Optional[str],
+    echo: Optional[Callable[..., None]] = None,
+) -> None:
+    """
+    Convert field separators for a file or piped data.
+
+    Syntax: ``[FILE] [newfs=,]`` (with stdin, first arg is ``newfs``).
+    """
+    echo = echo or click.echo
+    piped = stdin_data is not None and not (
+        stdin_data == "" and len(args) >= 1 and os.path.isfile(args[0])
+    )
+
+    if piped:
+        newfs = args[0] if len(args) >= 1 else ","
+        if len(args) > 1:
+            n = len(args) - 1
+            click.echo(
+                click.style(
+                    f"Warning: ignoring {n} extra argument(s) after NEWFS for piped input.",
+                    fg="yellow",
+                ),
+                err=True,
+            )
+        df = DataFile(None, stdin_text=stdin_data)
+    else:
+        if len(args) == 0:
+            raise click.ClickException("newfs requires a FILE when stdin is a TTY")
+        file_path = args[0]
+        if not os.path.isfile(file_path):
+            raise click.ClickException(f"path provided is not a file: {file_path}")
+        newfs = args[1] if len(args) >= 2 else ","
+        if len(args) > 2:
+            n = len(args) - 2
+            click.echo(
+                click.style(
+                    f"Warning: ignoring {n} extra argument(s) after FILE and NEWFS.",
+                    fg="yellow",
+                ),
+                err=True,
+            )
+        df = DataFile(file_path)
+
+    try:
+        echo(df.convert_field_separator(newfs), nl=False)
+    finally:
+        df.cleanup_temp_file()
+
+
 DECAP_CHECKS_TTY: Tuple[ArgCheck, ...] = (
     (lambda c: not c.args, "decap requires a FILE or data on stdin"),
     (lambda c: len(c.args) > 2, "too many arguments; expected FILE [n_lines]"),

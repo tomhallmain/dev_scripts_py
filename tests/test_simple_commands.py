@@ -312,6 +312,41 @@ def test_decap_stdin_removes_n_lines(runner: CliRunner) -> None:
     assert result.output == "3\n4\n"
 
 
+# --- ds:dostounix ---
+
+
+def test_dostounix_stdin_normalizes_crlf(runner: CliRunner) -> None:
+    r = runner.invoke(cli, [".", "dostounix"], input="a\r\nb\r\n", catch_exceptions=False)
+    assert r.exit_code == 0
+    assert r.output == "a\nb\n"
+
+
+def test_dostounix_file_inplace(tmp_path: Path, runner: CliRunner) -> None:
+    p = tmp_path / "dos.txt"
+    p.write_bytes(b"a\r\nb\r\n")
+    r = runner.invoke(cli, [".", "dostounix", str(p)], catch_exceptions=False)
+    assert r.exit_code == 0
+    assert "Removing CR line endings in" in r.output
+    assert p.read_bytes() == b"a\nb\n"
+
+
+# --- ds:newfs ---
+
+
+def test_newfs_addresses_case_matches_shell_expectation(runner: CliRunner) -> None:
+    data = Path(__file__).resolve().parent / "data" / "addresses.csv"
+    r = runner.invoke(cli, [".", "newfs", str(data), "::"], catch_exceptions=False)
+    assert r.exit_code == 0
+    joan_line = next(ln for ln in r.output.splitlines() if "Joan" in ln)
+    assert joan_line == 'Joan "the bone", Anne::Jet::9th, at Terrace plc::Desert City::CO::00123'
+
+
+def test_newfs_piped_default_to_csv_quotes_commas(runner: CliRunner) -> None:
+    r = runner.invoke(cli, [".", "newfs"], input="a:b:c\n", catch_exceptions=False)
+    assert r.exit_code == 0
+    assert r.output == "a,b,c"
+
+
 # --- cardinality (CliArgContext + DataFile) ---
 
 
