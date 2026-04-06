@@ -1,0 +1,6 @@
+# Runtime deps (install from project docs / environment as needed)
+click
+termcolor
+
+# Tests
+pytest>=7.0
