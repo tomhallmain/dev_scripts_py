@@ -8,7 +8,7 @@ import re
 import sys
 from dataclasses import InitVar, dataclass
 from enum import Enum, auto
-from typing import Callable, Optional, Sequence, Tuple
+from typing import Callable, List, Optional, Sequence, Tuple
 
 import click
 
@@ -23,11 +23,17 @@ class PathCandidatePredicate(Enum):
     - ``NONE``: no path from positionals; stdin when not a TTY.
     - ``TESTED_FIRST_ARG``: resolve the first positional; if it names an existing file, use that
       path (see :attr:`CliArgContext.resolved_path`); otherwise behave like ``NONE`` for file input.
+    - ``PAIR_CHAIN_OR_STDIN_SECOND``: join / diff style: **piped stdin** → ``args[0]`` must be an
+      existing file (first dataset); the **second** dataset is **only** stdin; ``args[1:]`` are
+      command options (even if they look like paths). **TTY** → greedily consume **leading**
+      positionals that name existing files (two or more); those are pair-wise or chain inputs;
+      stdin is not used. See :meth:`CliArgContext.resolve_join_style_paths`.
     """
 
     FIRST_ARG = auto()
     NONE = auto()
     TESTED_FIRST_ARG = auto()
+    PAIR_CHAIN_OR_STDIN_SECOND = auto()
 
 
 Predicate = Callable[["CliArgContext"], bool]
@@ -56,6 +62,48 @@ def _resolved_path_tested_first_arg(args: Tuple[str, ...]) -> Optional[str]:
     return None
 
 
+def _resolve_if_existing_file(raw: str) -> Optional[str]:
+    """Resolve ``raw`` if it names an existing file; else ``None``."""
+    if not raw:
+        return None
+    try:
+        resolved = Utils.resolve_relative_path(raw)
+    except Exception:
+        return None
+    if os.path.isfile(resolved):
+        return resolved
+    return None
+
+
+def _greedy_leading_file_paths(args: Tuple[str, ...]) -> Tuple[List[str], int]:
+    """Return ``(resolved_paths, count_consumed)`` for leading tokens that name existing files."""
+    out: List[str] = []
+    i = 0
+    while i < len(args):
+        r = _resolve_if_existing_file(args[i])
+        if r is None:
+            break
+        out.append(r)
+        i += 1
+    return out, i
+
+
+@dataclass(frozen=True)
+class JoinStylePathResolution:
+    """Result of :meth:`CliArgContext.resolve_join_style_paths`.
+
+    - **Pipe (stdin present):** :attr:`path_paths` is a single file; :attr:`stdin_replaces_second_file`
+      is True; the second input is only :attr:`~CliArgContext.stdin_text` materialized by the
+      caller. :attr:`remaining_args` is ``args[1:]``.
+    - **TTY:** :attr:`path_paths` has **at least two** leading files (pair or longer chain); stdin is
+      not read as data. :attr:`remaining_args` follows the last consumed path token.
+    """
+
+    path_paths: Tuple[str, ...]
+    stdin_replaces_second_file: bool
+    remaining_args: Tuple[str, ...]
+
+
 @dataclass(frozen=True)
 class CliArgContext:
     """
@@ -75,6 +123,9 @@ class CliArgContext:
     Optional ``field_separator`` / ``output_field_separator`` are applied when building a
     :class:`~scripts.DataFile.DataFile` via :meth:`to_data_file` (same meaning as in
     :class:`~scripts.DataFile.DataFile`).
+
+    For :attr:`PathCandidatePredicate.PAIR_CHAIN_OR_STDIN_SECOND`, use
+    :meth:`resolve_join_style_paths` instead of :meth:`to_data_file`.
     """
 
     args: Tuple[str, ...]
@@ -181,6 +232,8 @@ class CliArgContext:
             return self.args[0] if self.args else None
         if self.path_candidate_rule is PathCandidatePredicate.TESTED_FIRST_ARG:
             return self.resolved_path
+        if self.path_candidate_rule is PathCandidatePredicate.PAIR_CHAIN_OR_STDIN_SECOND:
+            return None
         raise NotImplementedError(self.path_candidate_rule)
 
     def shifted_arg(self, n: int) -> str:
@@ -202,8 +255,60 @@ class CliArgContext:
             )
         return self.args[i]
 
+    def resolve_join_style_paths(self) -> JoinStylePathResolution:
+        """Parse join / diff style inputs when :attr:`path_candidate_rule` is
+        :attr:`PathCandidatePredicate.PAIR_CHAIN_OR_STDIN_SECOND`.
+
+        **Piped stdin** (``stdin_text`` is not ``None``): require ``args[0]`` to name an existing
+        file (first dataset). The second dataset is **only** stdin; ``args[1:]`` are passed
+        through as ``remaining_args`` (not interpreted as extra file paths).
+
+        **Interactive TTY** (``stdin_text`` is ``None``): greedily take leading positionals that
+        name existing files; require at least **two** for a pair or chain; stdin is not used as
+        input data.
+        """
+        if self.path_candidate_rule is not PathCandidatePredicate.PAIR_CHAIN_OR_STDIN_SECOND:
+            raise ValueError(
+                "resolve_join_style_paths requires path_candidate_rule "
+                "PAIR_CHAIN_OR_STDIN_SECOND"
+            )
+
+        if self.stdin_text is not None:
+            if not self.args:
+                raise click.ClickException(
+                    "A FILE path is required as the first argument when the second input is stdin."
+                )
+            first = _resolve_if_existing_file(self.args[0])
+            if first is None:
+                raise click.ClickException(
+                    f"first argument must be an existing file when piping the second input: "
+                    f"{self.args[0]!r}"
+                )
+            return JoinStylePathResolution(
+                path_paths=(first,),
+                stdin_replaces_second_file=True,
+                remaining_args=self.args[1:],
+            )
+
+        paths, consumed = _greedy_leading_file_paths(self.args)
+        if len(paths) < 2:
+            raise click.ClickException(
+                "At least two existing FILE paths are required when stdin is a TTY "
+                "(pipe data on stdin to use one file argument plus stdin as the second input)."
+            )
+        return JoinStylePathResolution(
+            path_paths=tuple(paths),
+            stdin_replaces_second_file=False,
+            remaining_args=self.args[consumed:],
+        )
+
     def to_data_file(self) -> DataFile:
         """After command-specific checks: materialize :class:`~scripts.DataFile.DataFile`."""
+        if self.path_candidate_rule is PathCandidatePredicate.PAIR_CHAIN_OR_STDIN_SECOND:
+            raise click.ClickException(
+                "Use resolve_join_style_paths() and open DataFile instances per path / stdin; "
+                "to_data_file() does not apply to PAIR_CHAIN_OR_STDIN_SECOND."
+            )
         try:
             path = self.path_candidate
             if path and self.path_candidate_rule is PathCandidatePredicate.FIRST_ARG:
