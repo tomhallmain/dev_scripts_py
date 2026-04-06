@@ -1,3 +1,4 @@
+import csv
 import os
 import re
 import sys
@@ -48,6 +49,20 @@ class DataFile:
         return open(self.file_path, 'r')
 
     def get_data(self):
+        """Load ``self.data`` from disk. CSV files use :mod:`csv` (quoted fields); other
+        files split lines with the configured field separator (see ``get_field_separator``).
+        """
+        ext = (self.extension() or "").lower()
+        if ext == "csv":
+            self.data = []
+            with open(self.file_path, newline="", encoding="utf-8") as f:
+                for row in csv.reader(f):
+                    line_data = [c.strip() for c in row if c.strip() != ""]
+                    self.data.append(line_data)
+                    if len(line_data) > self.max_nf:
+                        self.max_nf = len(line_data)
+            return self.data
+
         escaped_fs = self.escape_field_separator()
 
         with self.read() as f:

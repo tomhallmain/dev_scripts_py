@@ -697,9 +697,11 @@ def power(file, min_count, return_fields, invert, choose):
 
     Example:  ds . power data.txt --min 2 --choose 2
     """
+    from scripts.DataFile import DataFile
     from scripts.power import DataAnalyzer
     file = Utils.resolve_relative_path(file)
-    analyzer = DataAnalyzer(file, min=min_count, return_fields=return_fields, invert=invert, choose=choose)
+    data_file = DataFile(file)
+    analyzer = DataAnalyzer(data_file, min=min_count, return_fields=return_fields, invert=invert, choose=choose)
     analyzer.analyze()
     analyzer.print_results()
 
