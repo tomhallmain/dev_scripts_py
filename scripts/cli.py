@@ -954,8 +954,16 @@ def graph(args, print_bases):
 @cli.command()
 @click.argument("args", nargs=-1, required=False)
 @click.option('--stag-size', '-s', default=5, help="Number of spaces to indent per field")
-@wip
-def stagger(args, stag_size):
+@click.option('--field-sep', '-F', default=None, help="Input field separator override (regex-like not supported)")
+@click.option('--tty-size', type=int, default=None, help="Terminal width for wrapping")
+@click.option('--style', type=click.Choice(["simple", "compact"]), default="simple")
+@click.option('--wrap', type=click.Choice(["smart", "char"]), default="smart")
+@click.option('--numbers', is_flag=True, help="Prefix each record with its line number")
+@click.option('--align', type=click.Choice(["l", "r", "c"]), default="l")
+@click.option('--max-width', type=int, default=0, help="Maximum width per field before wrapping")
+@click.option('--ellipsis', is_flag=True, help="Use ellipsis for very long fields")
+@click.option('--wrap-char', default="↪", help="Continuation marker for wrapped lines")
+def stagger(args, stag_size, field_sep, tty_size, style, wrap, numbers, align, max_width, ellipsis, wrap_char):
     """
     Print tabular data in staggered rows: optional ``FILE`` or stdin.
 
@@ -969,9 +977,21 @@ def stagger(args, stag_size):
         tuple(args),
         path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
         extra_arg_warn=EXTRA_ARG_WARN_FIRST_FILE_ONLY,
+        field_separator=field_sep,
     )
     data_file = ctx.to_data_file()
-    print_staggered(data_file.file_path, stag_size=stag_size)
+    print_staggered(
+        data_file,
+        stag_size=stag_size,
+        tty_size=tty_size,
+        style=style,
+        wrap=wrap,
+        numbers=numbers,
+        align=align,
+        max_width=max_width,
+        ellipsis=ellipsis,
+        wrap_char=wrap_char,
+    )
 
 
 @cli.command()

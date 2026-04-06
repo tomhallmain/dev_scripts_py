@@ -190,8 +190,8 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:space             |                    | —           |                                              |
 | ds:src               |                    | —           | Shell-specific                               |
 | ds:srg               |                    | —           |                                              |
-| ds:stagger           | `ds stagger`       | WIP         |                                              |
-| ds:subsep            | `ds subsep`        | STUB        | Incomplete methods                           |
+| ds:stagger           | `ds stagger`       | ✅          | Dedicated parity-focused tests in `test_stagger.py` |
+| ds:subsep            | `ds subsep`        | STUB        | Core methods incomplete (`SetOFS` etc.); many parity tests skipped |
 | ds:substr            |                    | —           |                                              |
 | ds:test              |                    | —           |                                              |
 | ds:tmp               |                    | —           |                                              |
