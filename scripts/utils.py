@@ -1,8 +1,18 @@
+import codecs
 import fnmatch
 import os
 import platform
 import re
 import sys
+
+
+def re_unescape(pattern: str) -> str:
+    """Decode escapes in a regex source string. ``re.unescape`` is Python 3.11+."""
+    unescape = getattr(re, "unescape", None)
+    if unescape is not None:
+        return unescape(pattern)
+    return codecs.decode(pattern.encode("latin1"), "unicode_escape")
+
 
 class _Getch:
     """

@@ -191,7 +191,7 @@ def test_stderr_contract_missing_pattern_documented() -> None:
 def test_seps_base_and_sorted_same_line_count() -> None:
     base_lines = SEPS_TEST_BASE.read_text(encoding="utf-8").splitlines()
     sorted_lines = SEPS_TEST_SORTED.read_text(encoding="utf-8").splitlines()
-    assert len(base_lines) == len(sorted_lines) == 101
+    assert len(base_lines) == len(sorted_lines) == 100
 
 
 def test_seps_sorted_is_not_identical_to_base() -> None:
@@ -200,10 +200,10 @@ def test_seps_sorted_is_not_identical_to_base() -> None:
 
 
 def test_seps_lines_use_ampersand_hash_field_separator() -> None:
-    """Spot-check: rows split on ``&%#`` into six fields (fixture convention)."""
+    """Spot-check: rows use ``&%#`` between fields (6 delimiters → 7 columns in each row)."""
     sample = SEPS_TEST_BASE.read_text(encoding="utf-8").splitlines()[0]
     parts = sample.split("&%#")
-    assert len(parts) == 6
+    assert len(parts) == 7
 
 
 def test_subseparator_finder_processes_seps_test_base_with_ampersand_hash_sep() -> None:

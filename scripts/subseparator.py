@@ -1,6 +1,9 @@
 import re
 import sys
 
+from scripts.utils import re_unescape
+
+
 class SubseparatorFinder:
     def __init__(self, subsep_pattern=None, nomatch_handler=r'\s+', debug=False, escape=False, apply_to_fields=None, OFS=None):
         self.subsep_pattern = subsep_pattern
@@ -25,7 +28,7 @@ class SubseparatorFinder:
             else:
                 self.nomatch_handler = re.escape(self.nomatch_handler)
 
-        self.unescaped_pattern = re.unescape(self.subsep_pattern)
+        self.unescaped_pattern = re_unescape(self.subsep_pattern)
         if self.escape:
             self.subsep_pattern = re.escape(self.subsep_pattern)
         else:
@@ -63,7 +66,7 @@ class SubseparatorFinder:
 
                 for j in range(num_subseps):
                     if not subseparated_line[j].strip():
-                        subfield_shifts[f] -= 1
+                        subfield_shifts[f] = subfield_shifts.get(f, 0) - 1
 
         return max_subseps, subfield_shifts
 

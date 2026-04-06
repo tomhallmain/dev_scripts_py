@@ -114,7 +114,13 @@ def line_cmd(seed_cmds: Optional[str], line_cmds: str, ifs: str, stdin_data: Opt
         cmd = line_cmds.replace("{line}", item)
         env = dict(os.environ)
         env["line"] = item
-        result = subprocess.run(cmd, shell=True, text=True, env=env, check=False)
+        result = subprocess.run(
+            cmd, shell=True, text=True, env=env, check=False, capture_output=True
+        )
+        if result.stdout:
+            click.echo(result.stdout, nl=False)
+        if result.stderr:
+            click.echo(result.stderr, nl=False, err=True)
         if result.returncode != 0:
             status = result.returncode
     if status:
