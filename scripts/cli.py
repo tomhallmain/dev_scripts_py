@@ -14,7 +14,6 @@ from scripts.DataFile import DataFile
 from scripts.dup_files import dups_main
 from scripts.field_counts import FieldsCounter
 from scripts.infer_field_separator import SeparatorInference
-from scripts.index import index_main
 from scripts.join import Join
 from scripts.kill_port import kill_port_main
 from scripts.move import move_main
@@ -286,7 +285,7 @@ def index(args, field_sep, header):
         field_separator=field_sep,
     )
     data_file = ctx.to_data_file()
-    index_main(data_file, header)
+    data_file.print_indexed(header=header)
 
 @cli.command(aliases=["t"])
 @click.argument("args", nargs=-1, required=False)

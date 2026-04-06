@@ -217,6 +217,48 @@ class DataFile:
             print(sep.join(str(x) for x in line))
 
     @staticmethod
+    def _print_formatted_index(idx, space: bool, max_rows: int) -> None:
+        if space:
+            len_max = len(str(max_rows)) if max_rows else 6
+            print("{:>{}}".format(idx, len_max), end="")
+        else:
+            print(idx, end="")
+
+    def print_indexed(self, header: bool = False) -> None:
+        """
+        Print line-indexed rows, matching ``scripts/index.py`` behavior.
+        """
+        self.get_field_separator()
+        space_fs = 0
+        fs_val = self.field_separator or ""
+        if re.match(r"\[\[:space:\]\]\{2.\}", fs_val):
+            fs = "  "
+            space_fs = 1
+        elif re.match(r"\[.+\]", fs_val):
+            fs = " "
+            space_fs = 1
+        elif fs_val.startswith(r"\ "):
+            fs = "  "
+            space_fs = 1
+        else:
+            fs = fs_val
+
+        space = space_fs and not sys.stdout.isatty()
+        start_mod = 0 if header else 1
+        max_nr = self.n_rows
+        with self.read() as f:
+            for i, line in enumerate(f, start=1):
+                line = line.strip()
+                if i == 1:
+                    self._print_formatted_index("", space, max_nr)
+                    for f_i, _field in enumerate(line.split(fs), start=1):
+                        print(fs + str(f_i), end="")
+                    print()
+                i = i - start_mod
+                self._print_formatted_index(i, space, max_nr)
+                print(fs + line)
+
+    @staticmethod
     def _awk_expr_to_python(expr: str) -> str:
         """Convert a small AWK-like expression into Python syntax."""
         s = expr.strip().replace("&&", " and ").replace("||", " or ")
