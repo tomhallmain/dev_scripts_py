@@ -43,6 +43,18 @@ def _scan_file(fp: str, rx: re.Pattern[str]) -> list[str]:
     return out
 
 
+def _scan_file_hits(fp: str, rx: re.Pattern[str]) -> list[tuple[int, str]]:
+    out: list[tuple[int, str]] = []
+    try:
+        with open(fp, encoding="utf-8", errors="replace") as f:
+            for lineno, line in enumerate(f, 1):
+                if rx.search(line):
+                    out.append((lineno, line.rstrip("\n\r")))
+    except OSError:
+        return out
+    return out
+
+
 def _python_scan(path: str, rx: re.Pattern[str]) -> list[str]:
     out: list[str] = []
     if os.path.isfile(path):
@@ -52,6 +64,23 @@ def _python_scan(path: str, rx: re.Pattern[str]) -> list[str]:
             fp = os.path.join(dirpath, fn)
             if os.path.isfile(fp):
                 out.extend(_scan_file(fp, rx))
+    return out
+
+
+def _python_scan_hits(path: str, rx: re.Pattern[str]) -> dict[str, list[tuple[int, str]]]:
+    out: dict[str, list[tuple[int, str]]] = {}
+    if os.path.isfile(path):
+        hits = _scan_file_hits(path, rx)
+        if hits:
+            out[path] = hits
+        return out
+    for dirpath, _dirnames, filenames in os.walk(path):
+        for fn in filenames:
+            fp = os.path.join(dirpath, fn)
+            if os.path.isfile(fp):
+                hits = _scan_file_hits(fp, rx)
+                if hits:
+                    out[fp] = hits
     return out
 
 
@@ -90,6 +119,61 @@ def _rg_scan(
         raise click.ClickException(r.stderr.strip() or f"rg failed with code {r.returncode}")
     lines = [ln for ln in r.stdout.splitlines() if ln.strip()]
     return 0, lines
+
+
+def _rg_scan_hits(paths: Tuple[str, ...], pattern: str) -> tuple[int, dict[str, list[tuple[int, str]]]]:
+    rg = shutil.which("rg")
+    if not rg:
+        return -1, {}
+    cmd = [
+        rg,
+        "--line-number",
+        "--no-heading",
+        "--color",
+        "never",
+        "-i",
+        "--regexp",
+        pattern,
+        *paths,
+    ]
+    if os.name == "nt":
+        cmd.insert(1, "--path-separator")
+        cmd.insert(2, "/")
+    try:
+        r = subprocess.run(
+            cmd,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+    except OSError:
+        return -1, {}
+    if r.returncode not in (0, 1):
+        raise click.ClickException(r.stderr.strip() or f"rg failed with code {r.returncode}")
+
+    out: dict[str, list[tuple[int, str]]] = {}
+    for line in r.stdout.splitlines():
+        if not line:
+            continue
+        if len(line) >= 2 and line[0].isalpha() and line[1] == ":":
+            rest = line[2:]
+            parts = rest.split(":", 2)
+            if len(parts) < 3:
+                continue
+            filepath = line[0] + ":" + parts[0]
+            lineno_s, content = parts[1], parts[2]
+        else:
+            parts = line.split(":", 2)
+            if len(parts) < 3:
+                continue
+            filepath, lineno_s, content = parts[0], parts[1], parts[2]
+        try:
+            lineno = int(lineno_s)
+        except ValueError:
+            continue
+        out.setdefault(filepath, []).append((lineno, content))
+    return 0, out
 
 
 def collect_search_matches(
@@ -166,6 +250,59 @@ def run_search(
         print_matches=print_matches,
     )
     return code
+
+
+def collect_search_hits(
+    paths: Tuple[str, ...],
+    pattern: str,
+    *,
+    echo: Callable[..., None] | None = None,
+    print_matches: bool = True,
+) -> tuple[int, dict[str, list[tuple[int, str]]]]:
+    """
+    Search ``paths`` for regex ``pattern`` and return file/line hits.
+
+    Returns ``(exit_code, {filepath: [(lineno, line), ...]})``.
+    """
+    echo = echo or click.echo
+    try:
+        rx = re.compile(pattern, re.IGNORECASE)
+    except re.error as e:
+        raise click.ClickException(f"Invalid search pattern: {e}") from e
+
+    if not paths:
+        paths = (".",)
+    resolved, bad = _resolve_paths(paths, echo)
+    if not resolved:
+        return 1, {}
+
+    use_rg = is_command_available("rg") and shutil.which("rg") is not None
+    all_hits: dict[str, list[tuple[int, str]]] = {}
+    for root in resolved:
+        if use_rg:
+            try:
+                code, hits = _rg_scan_hits((root,), pattern)
+            except click.ClickException:
+                use_rg = False
+                hits = _python_scan_hits(root, rx)
+            else:
+                if code == -1:
+                    use_rg = False
+                    hits = _python_scan_hits(root, rx)
+        else:
+            hits = _python_scan_hits(root, rx)
+        for fp, rows in hits.items():
+            all_hits.setdefault(fp, []).extend(rows)
+
+    if print_matches:
+        for fp, rows in all_hits.items():
+            for lineno, line in rows:
+                echo(f"{fp}:{lineno}: {line}")
+
+    if bad:
+        echo("Some paths provided could not be searched", err=True)
+        return 1, all_hits
+    return 0, all_hits
 
 
 def _normalize_path(path: str) -> str:

@@ -11,9 +11,9 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
-_CACHE: Dict[str, bool] | None = None
+_CACHE: Dict[str, Any] | None = None
 
 
 def _cache_file() -> Path:
@@ -25,7 +25,7 @@ def _cache_file() -> Path:
     return p
 
 
-def _load_cache() -> Dict[str, bool]:
+def _load_cache() -> Dict[str, Any]:
     global _CACHE
     if _CACHE is not None:
         return _CACHE
@@ -47,7 +47,7 @@ def _load_cache() -> Dict[str, bool]:
     return _CACHE
 
 
-def _save_cache(data: Dict[str, bool]) -> None:
+def _save_cache(data: Dict[str, Any]) -> None:
     path = _cache_file()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -65,8 +65,39 @@ def is_command_available(name: str) -> bool:
     """
     cache = _load_cache()
     if name in cache:
-        return cache[name]
+        return bool(cache[name])
     found = shutil.which(name) is not None
     cache[name] = found
     _save_cache(cache)
     return found
+
+
+def resolve_editor() -> Optional[str]:
+    """
+    Return a preferred editor executable, cached across runs.
+
+    Resolution order:
+    1) ``$EDITOR`` if present and on PATH
+    2) ``vim``, ``vi``, ``code``, platform-default terminal editor (``notepad`` on Windows,
+       ``nano`` elsewhere)
+    """
+    cache = _load_cache()
+    cache_key = "__preferred_editor__"
+    cached = cache.get(cache_key)
+    if isinstance(cached, str) and cached:
+        if is_command_available(cached):
+            return cached
+
+    env_editor = os.environ.get("EDITOR")
+    if env_editor and is_command_available(env_editor):
+        cache[cache_key] = env_editor
+        _save_cache(cache)
+        return env_editor
+
+    candidates = ("vim", "vi", "code", "notepad" if os.name == "nt" else "nano")
+    for candidate in candidates:
+        if is_command_available(candidate):
+            cache[cache_key] = candidate
+            _save_cache(cache)
+            return candidate
+    return None

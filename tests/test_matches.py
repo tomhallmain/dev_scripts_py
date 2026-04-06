@@ -72,3 +72,49 @@ def test_matches_stdin_as_second_input(runner: CliRunner) -> None:
     )
     assert r.exit_code == 0
     assert len(r.output.splitlines()) == 167
+
+
+def test_comps_is_complement_of_matches_for_key1(runner: CliRunner) -> None:
+    r_matches = runner.invoke(
+        cli,
+        [".", "matches", str(JNF1), str(JNF2), "-k", "1"],
+        catch_exceptions=False,
+    )
+    r_comps = runner.invoke(
+        cli,
+        [".", "comps", str(JNF1), str(JNF2), "-k", "1"],
+        catch_exceptions=False,
+    )
+    assert r_matches.exit_code == 0
+    assert r_comps.exit_code == 0
+
+    matched = set(r_matches.output.splitlines())
+    complement = set(r_comps.output.splitlines())
+    second_all = set(JNF2.read_text(encoding="utf-8").splitlines())
+    assert matched.isdisjoint(complement)
+    assert matched | complement == second_all
+
+
+def test_comps_same_file_prints_message_and_nonzero(runner: CliRunner) -> None:
+    r = runner.invoke(
+        cli,
+        [".", "comps", str(JNF1), str(JNF1)],
+        catch_exceptions=False,
+    )
+    assert r.exit_code != 0
+    assert r.output.strip() == "Error: Files are the same!"
+
+
+def test_comps_verbose_and_no_complements_with_copy(runner: CliRunner, tmp_path: Path) -> None:
+    f2 = tmp_path / "copy.csv"
+    f2.write_text(JNF1.read_text(encoding="utf-8"), encoding="utf-8")
+
+    r = runner.invoke(
+        cli,
+        [".", "comps", str(JNF1), str(f2), "--verbose"],
+        catch_exceptions=False,
+    )
+    assert r.exit_code == 0
+    lines = r.output.splitlines()
+    # no-complement case prints one line; verbose has no banner when nothing selected
+    assert lines == ["NO COMPLEMENTS FOUND"]

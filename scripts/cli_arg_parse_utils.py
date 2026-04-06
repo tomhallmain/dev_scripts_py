@@ -108,7 +108,13 @@ class JoinStylePathResolution:
     path_paths: Tuple[str, ...]
     stdin_replaces_second_file: bool
     remaining_args: Tuple[str, ...]
+    check_same_file_pair: bool = True
+    same_file_pair_message: str = "Files are the same!"
     data_files: Optional[List[DataFile]] = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.check_same_file_pair and self.has_same_file_pair():
+            raise click.ClickException(self.same_file_pair_message)
 
     def require_exactly_two_inputs(self, *, message: str) -> None:
         """Raise :exc:`click.ClickException` unless there are exactly two logical inputs.
@@ -120,6 +126,19 @@ class JoinStylePathResolution:
             return
         if len(self.path_paths) != 2:
             raise click.ClickException(message)
+
+    def has_same_file_pair(self) -> bool:
+        """
+        Return whether the resolved pair points to the same on-disk file path.
+
+        Only applies to two explicit file paths (non-stdin mode); stdin-second mode is always
+        false because the second input does not come from a path.
+        """
+        if self.stdin_replaces_second_file:
+            return False
+        if len(self.path_paths) != 2:
+            return False
+        return self.path_paths[0] == self.path_paths[1]
 
     def materialize_data_files(
         self,
@@ -311,7 +330,12 @@ class CliArgContext:
             )
         return self.args[i]
 
-    def resolve_join_style_paths(self) -> JoinStylePathResolution:
+    def resolve_join_style_paths(
+        self,
+        *,
+        check_same_file_pair: bool = True,
+        same_file_pair_message: str = "Files are the same!",
+    ) -> JoinStylePathResolution:
         """Parse join / diff style inputs when :attr:`path_candidate_rule` is
         :attr:`PathCandidatePredicate.PAIR_CHAIN_OR_STDIN_SECOND`.
 
@@ -338,6 +362,8 @@ class CliArgContext:
                 path_paths=tuple(leading_paths),
                 stdin_replaces_second_file=False,
                 remaining_args=self.args[consumed:],
+                check_same_file_pair=check_same_file_pair,
+                same_file_pair_message=same_file_pair_message,
             )
 
         if self.stdin_text is not None:
@@ -350,6 +376,8 @@ class CliArgContext:
                 path_paths=(leading_paths[0],),
                 stdin_replaces_second_file=True,
                 remaining_args=self.args[1:],
+                check_same_file_pair=check_same_file_pair,
+                same_file_pair_message=same_file_pair_message,
             )
 
         raise click.ClickException(
@@ -389,6 +417,45 @@ def validate_positive_key_field(name: str, value: Optional[int]) -> None:
     """Raise :exc:`click.ClickException` if ``value`` is set and not a valid 1-based index."""
     if value is not None and value < 1:
         raise click.ClickException(f"{name} must be a positive (1-based) field index")
+
+
+@dataclass(frozen=True)
+class EffectiveKeys:
+    """Resolved key indices for two-input comparison commands."""
+
+    k1: Optional[int]
+    k2: Optional[int]
+
+
+def validate_and_resolve_key_fields(
+    *,
+    key: Optional[int],
+    key1: Optional[int],
+    key2: Optional[int],
+) -> EffectiveKeys:
+    """
+    Validate key flags and return effective keys.
+
+    Resolution mirrors legacy ``matches`` behavior:
+    - ``--key`` fills missing sides
+    - one-sided explicit key mirrors to the other side
+    """
+    validate_positive_key_field("--key", key)
+    validate_positive_key_field("--key1", key1)
+    validate_positive_key_field("--key2", key2)
+
+    out_key1 = key1
+    out_key2 = key2
+    if key is not None:
+        if out_key1 is None:
+            out_key1 = key
+        if out_key2 is None:
+            out_key2 = key
+    if out_key1 is None and out_key2 is not None:
+        out_key1 = out_key2
+    if out_key2 is None and out_key1 is not None:
+        out_key2 = out_key1
+    return EffectiveKeys(k1=out_key1, k2=out_key2)
 
 
 def parse_non_negative_int_arg(

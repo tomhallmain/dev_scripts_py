@@ -780,6 +780,24 @@ def matches(args, key, key1, key2, fs, verbose):
     run_matches(tuple(args), key=key, key1=key1, key2=key2, fs=fs, verbose=verbose)
 
 
+@cli.command(name="comps")
+@click.argument("args", nargs=-1, required=False)
+@click.option("--key", "-k", "key", type=int, default=None, help="Key field index (1-based) for both files")
+@click.option("--key1", type=int, default=None, help="Key field index for the first file (1-based)")
+@click.option("--key2", type=int, default=None, help="Key field index for the second file (1-based)")
+@click.option("--fs", "-s", "fs", default=None, help="Field separator for both files")
+@click.option("--verbose", is_flag=True, help="When complements exist, print a short banner (two extra lines before rows)")
+def comps(args, key, key1, key2, fs, verbose):
+    """
+    Lines from the second file whose key does not appear in the first file (two FILE paths, or one
+    FILE with the second dataset on stdin).
+    """
+    from scripts.matches import run_comps
+    code = run_comps(tuple(args), key=key, key1=key1, key2=key2, fs=fs, verbose=verbose)
+    if code:
+        sys.exit(code)
+
+
 @cli.command(name="power")
 @click.argument("args", nargs=-1, required=False)
 @click.option('--min', '-m', 'min_count', default=0, help="Minimum occurrence count")

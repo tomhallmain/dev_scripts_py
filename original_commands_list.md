@@ -114,7 +114,7 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:cd                | `ds cd`            | ✅          | Resolves a target path for shell `cd` usage  |
 | ds:color             |                    | —           |                                              |
 | ds:commands          | `ds commands`      | ✅          | Also available via `ds --help`               |
-| ds:comps             |                    | —           | Complement of `ds matches`                   |
+| ds:comps             | `ds comps`         | ✅          | Complement of `ds matches`                   |
 | ds:cp                | `ds cp`            | ✅          | Clipboard (UTF-8); macOS ``pbcopy``, Win PS, Linux xclip/wl-copy/xsel |
 | ds:decap             | `ds decap`         | ✅          | Drop first *n* lines (file or stdin)         |
 | ds:deps              |                    | —           | Shell-specific                               |

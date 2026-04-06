@@ -10,6 +10,7 @@ import sys
 from typing import Optional, Tuple
 
 from scripts.DataFile import DataFile
+from scripts.cli_arg_parse_utils import EffectiveKeys
 
 
 class FileComparator:
@@ -18,28 +19,13 @@ class FileComparator:
         data_file1: DataFile,
         data_file2: DataFile,
         *,
-        key: Optional[int] = None,
-        key1: Optional[int] = None,
-        key2: Optional[int] = None,
+        effective_keys: EffectiveKeys,
     ) -> None:
         self.df1 = data_file1
         self.df2 = data_file2
-        self.key = key
-        self.key1 = key1
-        self.key2 = key2
+        self.effective_keys = effective_keys
         self.records: dict[str, int] = {}
-        self.matches: list[str] = []
-
-    def _merge_key_indices(self) -> None:
-        if self.key is not None:
-            if self.key1 is None:
-                self.key1 = self.key
-            if self.key2 is None:
-                self.key2 = self.key
-        if self.key1 is None and self.key2 is not None:
-            self.key1 = self.key2
-        if self.key2 is None and self.key1 is not None:
-            self.key2 = self.key1
+        self.selected_lines: list[str] = []
 
     @staticmethod
     def _key_from_row(row: list[str], key_1based: Optional[int]) -> Optional[str]:
@@ -50,20 +36,20 @@ class FileComparator:
             return None
         return row[i]
 
-    def compare_files(self) -> None:
-        self._merge_key_indices()
+    def compare_files(self, *, include_matches: bool = True) -> None:
         df1, df2 = self.df1, self.df2
         df1.get_field_separator()
         df2.get_field_separator()
 
-        if self.key1 is None and self.key2 is None:
+        if self.effective_keys.k1 is None and self.effective_keys.k2 is None:
             raw1 = df1.read_raw_lines()
             raw2 = df2.read_raw_lines()
             for ln in raw1:
                 self.records[ln.rstrip("\n\r")] = 1
             for ln in raw2:
-                if ln.rstrip("\n\r") in self.records:
-                    self.matches.append(ln)
+                found = ln.rstrip("\n\r") in self.records
+                if found == include_matches:
+                    self.selected_lines.append(ln)
             return
 
         data1 = df1.get_data()
@@ -73,23 +59,30 @@ class FileComparator:
             raise RuntimeError("internal error: row count mismatch for second DataFile")
 
         for row in data1:
-            k = self._key_from_row(row, self.key1)
+            k = self._key_from_row(row, self.effective_keys.k1)
             if k is not None:
                 self.records[k] = 1
 
         for i, row in enumerate(data2):
-            k = self._key_from_row(row, self.key2)
-            if k is not None and k in self.records:
-                self.matches.append(raw2[i])
+            k = self._key_from_row(row, self.effective_keys.k2)
+            found = k is not None and k in self.records
+            if found == include_matches:
+                self.selected_lines.append(raw2[i])
 
-    def print_matches(self, verbose: bool = False) -> None:
-        if len(self.matches) > 0:
+    def print_selected_lines(self, *, verbose: bool = False, inverse: bool = False) -> None:
+        if len(self.selected_lines) > 0:
             if verbose:
-                print("Records found in both files:")
+                if inverse:
+                    print("Records unique to second file:")
+                else:
+                    print("Records found in both files:")
                 print()
-            sys.stdout.writelines(self.matches)
+            sys.stdout.writelines(self.selected_lines)
         else:
-            print("NO MATCHES FOUND")
+            if inverse:
+                print("NO COMPLEMENTS FOUND")
+            else:
+                print("NO MATCHES FOUND")
 
 
 def run_matches(
@@ -105,12 +98,10 @@ def run_matches(
     from scripts.cli_arg_parse_utils import (
         CliArgContext,
         PathCandidatePredicate,
-        validate_positive_key_field,
+        validate_and_resolve_key_fields,
     )
 
-    validate_positive_key_field("--key", key)
-    validate_positive_key_field("--key1", key1)
-    validate_positive_key_field("--key2", key2)
+    effective_keys = validate_and_resolve_key_fields(key=key, key1=key1, key2=key2)
 
     ctx = CliArgContext.from_click(
         tuple(args),
@@ -128,16 +119,52 @@ def run_matches(
     )
     df1, df2 = data_files[0], data_files[1]
     try:
-        comparator = FileComparator(df1, df2, key=key, key1=key1, key2=key2)
-        comparator.compare_files()
-        comparator.print_matches(verbose=verbose)
+        comparator = FileComparator(df1, df2, effective_keys=effective_keys)
+        comparator.compare_files(include_matches=True)
+        comparator.print_selected_lines(verbose=verbose, inverse=False)
     finally:
         resolution.cleanup_stdin_backed_data_files()
 
 
-if __name__ == "__main__":
-    df_a = DataFile("file1.txt")
-    df_b = DataFile("file2.txt")
-    c = FileComparator(df_a, df_b, key=1)
-    c.compare_files()
-    c.print_matches()
+def run_comps(
+    args: Tuple[str, ...],
+    *,
+    key: Optional[int] = None,
+    key1: Optional[int] = None,
+    key2: Optional[int] = None,
+    fs: Optional[str] = None,
+    verbose: bool = False,
+) -> int:
+    """CLI entry: complement of ``matches`` (rows from second dataset not present in first)."""
+    from scripts.cli_arg_parse_utils import (
+        CliArgContext,
+        PathCandidatePredicate,
+        validate_and_resolve_key_fields,
+    )
+
+    effective_keys = validate_and_resolve_key_fields(key=key, key1=key1, key2=key2)
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.PAIR_CHAIN_OR_STDIN_SECOND,
+        field_separator=fs,
+    )
+    resolution = ctx.resolve_join_style_paths(
+        check_same_file_pair=True,
+        same_file_pair_message="Files are the same!",
+    )
+    resolution.require_exactly_two_inputs(
+        message="comps expects exactly two FILE paths, or one FILE with the second input on stdin."
+    )
+    data_files = resolution.materialize_data_files(
+        stdin_text=ctx.stdin_text, field_separator=fs
+    )
+    df1, df2 = data_files[0], data_files[1]
+    try:
+        comparator = FileComparator(df1, df2, effective_keys=effective_keys)
+        comparator.compare_files(include_matches=False)
+        comparator.print_selected_lines(verbose=verbose, inverse=True)
+        return 0
+    finally:
+        resolution.cleanup_stdin_backed_data_files()
+
+
