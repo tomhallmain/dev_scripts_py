@@ -10,6 +10,7 @@ t_basic.sh references:
 - embrace: ds:embrace 'test' / pipe → ``{test}``
 - cp: ``data | ds . cp`` → clipboard (UTF-8)
 - decap: drop first *n* lines from file or stdin
+- path_elements: dirname/ + tab + basename stem + tab + extension (``ds:path_elements``)
 """
 from __future__ import annotations
 
@@ -78,6 +79,34 @@ def test_rev_matches_t_basic(runner: CliRunner) -> None:
 def test_join_by_too_few_args_fails(runner: CliRunner) -> None:
     result = runner.invoke(cli, [".", "join_by", ", ", "only"], catch_exceptions=False)
     assert result.exit_code != 0
+
+
+# --- ds:path_elements (dirname/ basename / extension, tab-separated) ---
+
+
+def test_path_elements_nested_file(runner: CliRunner) -> None:
+    """``dirname/``, basename without last suffix, ``.suffix`` (bash ``ds:path_elements``)."""
+    r = runner.invoke(cli, [".", "path_elements", "foo/bar.txt"], catch_exceptions=False)
+    assert r.exit_code == 0
+    assert r.output == "foo/\tbar\t.txt"
+
+
+def test_path_elements_basename_only(runner: CliRunner) -> None:
+    r = runner.invoke(cli, [".", "path_elements", "file"], catch_exceptions=False)
+    assert r.exit_code == 0
+    assert r.output == "./\tfile\t"
+
+
+def test_path_elements_double_suffix(runner: CliRunner) -> None:
+    r = runner.invoke(cli, [".", "path_elements", "archive.tar.gz"], catch_exceptions=False)
+    assert r.exit_code == 0
+    assert r.output == "./\tarchive.tar\t.gz"
+
+
+def test_path_elements_another_nested(runner: CliRunner) -> None:
+    r = runner.invoke(cli, [".", "path_elements", "x/y/z.md"], catch_exceptions=False)
+    assert r.exit_code == 0
+    assert r.output == "x/y/\tz\t.md"
 
 
 # --- t_basic.sh parity: unicode ---

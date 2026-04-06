@@ -2,6 +2,7 @@ import os
 import re
 import subprocess
 import webbrowser
+from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 from urllib.parse import quote_plus
 
@@ -14,6 +15,22 @@ from scripts.cli_arg_parse_utils import (
     parse_non_negative_int_arg,
 )
 from scripts.DataFile import DataFile
+
+
+def path_elements_cmd(filepath: str) -> None:
+    """
+    Split a path into directory (with trailing ``/``), basename without final suffix, and suffix.
+
+    Matches ``ds:path_elements``: tab-separated fields, no trailing newline (POSIX-style
+    directory separator in the first field).
+    """
+    if not filepath or not filepath.strip():
+        raise click.ClickException("path_elements requires a non-empty FILEPATH.")
+    p = Path(filepath)
+    parent = p.parent
+    dir_str = parent.as_posix() if parent != Path(".") else "."
+    dir_out = dir_str + "/"
+    click.echo(f"{dir_out}\t{p.stem}\t{p.suffix}", nl=False)
 
 
 def rev_cmd(stdin: Iterable[str]):

@@ -619,6 +619,20 @@ def decap(args):
     decap_stdout(df, n_remove)
 
 
+@cli.command(name="path_elements")
+@click.argument("filepath")
+def path_elements(filepath):
+    """
+    Print directory (with trailing ``/``), basename without final extension, and extension.
+
+    Tab-separated, no newline; same idea as ``ds:path_elements`` for ``read``-style parsing.
+
+    Example:  ``ds . path_elements ./foo/bar.txt`` → ``./foo/\tbar\t.txt``
+    """
+    from scripts.simple_commands import path_elements_cmd
+    path_elements_cmd(os.path.normpath(filepath))
+
+
 @cli.command(name="iter")
 @click.argument('text')
 @click.argument('n', required=False, default=1, type=int)
