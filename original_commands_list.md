@@ -193,13 +193,13 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:stagger           | `ds stagger`       | ✅          | Dedicated parity-focused tests in `test_stagger.py` |
 | ds:subsep            | `ds subsep`        | STUB        | Core methods incomplete (`SetOFS` etc.); many parity tests skipped |
 | ds:substr            |                    | —           |                                              |
-| ds:test              |                    | —           |                                              |
+| ds:test              | `ds test`          | ✅          | Quiet extended-regex check (stdin/string/file) |
 | ds:tmp               |                    | —           |                                              |
 | ds:todo              | `ds todo`          | ✅          | Prefers `rg` when cached on PATH; else Python scan |
 | ds:trace             |                    | —           | Shell-specific                               |
 | ds:transpose         | `ds transpose`     | ✅          |                                              |
 | ds:unicode           | `ds unicode`       | ✅          |                                              |
-| ds:uniq              | `ds field_uniques` | STUB        |                                              |
+| ds:uniq              | `ds field_uniques` | ✅          | Parity tests in `test_fieldcounts_uniq.py`   |
 | ds:vi                | `ds vi`            | ✅          | Search files by name and open in `$EDITOR`   |
 | ds:websel            |                    | —           |                                              |
 

@@ -480,3 +480,37 @@ def parse_non_negative_int_arg(
         desc_prefix = (descriptor + " ") if descriptor else ""
         raise click.ClickException(f"{desc_prefix}must be non-negative")
     return n
+
+
+def regex_test_match(
+    pattern: str,
+    *,
+    stdin_text: Optional[str],
+    value_or_file: Optional[str] = None,
+    test_file_flag: str = "",
+) -> bool:
+    """
+    Quietly test whether ``pattern`` matches stdin, a file body, or a literal string.
+
+    Precedence matches shell ``ds:test``:
+    1) if stdin is piped, test stdin
+    2) if ``test_file_flag`` contains ``t`` and ``value_or_file`` is a file path, test file body
+    3) otherwise test ``value_or_file`` as a literal string
+    """
+    try:
+        rx = re.compile(pattern)
+    except re.error as e:
+        raise click.ClickException(f"Invalid regex pattern: {e}") from e
+
+    if stdin_text is not None and stdin_text != "":
+        return rx.search(stdin_text) is not None
+
+    if "t" in (test_file_flag or "").lower() and value_or_file and os.path.isfile(value_or_file):
+        try:
+            with open(value_or_file, encoding="utf-8", errors="replace") as f:
+                body = f.read()
+        except OSError as e:
+            raise click.ClickException(str(e)) from e
+        return rx.search(body) is not None
+
+    return rx.search(value_or_file or "") is not None

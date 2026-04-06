@@ -8,6 +8,7 @@ from scripts.cli_arg_parse_utils import (
     CliArgContext,
     EXTRA_ARG_WARN_FIRST_FILE_ONLY,
     PathCandidatePredicate,
+    regex_test_match,
     validate_positive_key_field,
 )
 from scripts.DataFile import DataFile
@@ -741,6 +742,25 @@ def line(seed_cmds, line_cmds, ifs):
         seed_cmds = None
     stdin_data = None if sys.stdin.isatty() else sys.stdin.read()
     line_cmd(seed_cmds=seed_cmds, line_cmds=line_cmds, ifs=ifs, stdin_data=stdin_data)
+
+
+@cli.command(name="test")
+@click.argument("regex")
+@click.argument("value_or_file", required=False, default="")
+@click.argument("test_file", required=False, default="")
+def test_cmd(regex, value_or_file, test_file):
+    """
+    Quiet regex test against stdin, a string, or optionally a file body.
+    """
+    stdin_data = None if sys.stdin.isatty() else sys.stdin.read()
+    ok = regex_test_match(
+        regex,
+        stdin_text=stdin_data,
+        value_or_file=value_or_file,
+        test_file_flag=test_file,
+    )
+    if not ok:
+        sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
