@@ -575,6 +575,17 @@ def embrace(args):
     embrace_cmd(tuple(args), stdin_data)
 
 
+@cli.command(name="cp")
+def cp_clipboard():
+    """
+    Copy standard input to the system clipboard (UTF-8).
+
+    Example: ``echo hello | ds . cp``
+    """
+    from scripts.clipboard_copy import copy_stdin_to_clipboard
+    copy_stdin_to_clipboard()
+
+
 @cli.command(name="iter")
 @click.argument('text')
 @click.argument('n', required=False, default=1, type=int)

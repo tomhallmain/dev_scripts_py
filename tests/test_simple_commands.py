@@ -8,6 +8,7 @@ t_basic.sh references:
 - rev: printf a\\nb\\nc\\nd | ds:rev -> lines reversed (concatenated: dcba)
 - unicode: ds:unicode "cats😼😻" / pipe / hex (\\U… and %… forms)
 - embrace: ds:embrace 'test' / pipe → ``{test}``
+- cp: ``data | ds . cp`` → clipboard (UTF-8)
 """
 from __future__ import annotations
 
@@ -222,6 +223,33 @@ def test_embrace_multiline_pipe_concatenates_wrapped_lines(runner: CliRunner) ->
     result = runner.invoke(cli, [".", "embrace"], input="a\nb\n", catch_exceptions=False)
     assert result.exit_code == 0
     assert result.output.rstrip("\n") == "{a}{b}"
+
+
+# --- ds:cp (clipboard; shell uses ``LC_CTYPE=UTF-8 pbcopy`` on macOS) ---
+
+
+@patch("scripts.clipboard_copy.copy_utf8_text_to_clipboard")
+def test_cp_stdin_passes_full_text_to_clipboard(
+    mock_copy: object, runner: CliRunner
+) -> None:
+    result = runner.invoke(cli, [".", "cp"], input="line1\nline2\n", catch_exceptions=False)
+    assert result.exit_code == 0
+    mock_copy.assert_called_once_with("line1\nline2\n")
+
+
+@patch("scripts.clipboard_copy.copy_utf8_text_to_clipboard")
+def test_cp_empty_stdin(mock_copy: object, runner: CliRunner) -> None:
+    result = runner.invoke(cli, [".", "cp"], input="", catch_exceptions=False)
+    assert result.exit_code == 0
+    mock_copy.assert_called_once_with("")
+
+
+@patch("scripts.clipboard_copy.copy_utf8_text_to_clipboard")
+def test_cp_preserves_utf8(mock_copy: object, runner: CliRunner) -> None:
+    text = "café\n日本\n"
+    result = runner.invoke(cli, [".", "cp"], input=text, catch_exceptions=False)
+    assert result.exit_code == 0
+    mock_copy.assert_called_once_with(text)
 
 
 # --- insert, line, goog, jira (Python port; not in t_basic.sh) ---

@@ -115,7 +115,7 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:color             |                    | —           |                                              |
 | ds:commands          | `ds commands`      | ✅          | Also available via `ds --help`               |
 | ds:comps             |                    | —           | Complement of `ds matches`                   |
-| ds:cp                |                    | —           |                                              |
+| ds:cp                | `ds cp`            | ✅          | Clipboard (UTF-8); macOS ``pbcopy``, Win PS, Linux xclip/wl-copy/xsel |
 | ds:decap             |                    | —           |                                              |
 | ds:deps              |                    | —           | Shell-specific                               |
 | ds:deps2             |                    | —           |                                              |
