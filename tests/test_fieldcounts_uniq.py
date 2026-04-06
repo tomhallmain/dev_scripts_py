@@ -84,7 +84,6 @@ a
 def _run_field_counts(fields: str, min_count: int) -> str:
     Utils.set_start_dir(str(TESTS_DIR.parent))
     df = DataFile(str(COMPANY_CSV))
-    df.get_field_separator()
     fc = FieldsCounter(df, fields=fields, min=min_count)
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):

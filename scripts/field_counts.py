@@ -50,7 +50,6 @@ class FieldsCounter:
         return self.IFS.join(parts)
 
     def run(self) -> None:
-        self.data_file.get_field_separator()
         rows = self.data_file.get_data()
         for row in rows:
             key = self._row_key(row)

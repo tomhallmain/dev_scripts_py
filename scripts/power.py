@@ -19,7 +19,6 @@ class DataAnalyzer:
         self._line_count = 0
 
     def analyze(self):
-        self.data_file.get_field_separator()
         lines = self.data_file.get_data()
         self._line_count = len(lines)
         for raw in lines:

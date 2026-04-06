@@ -38,8 +38,6 @@ class FileComparator:
 
     def compare_files(self, *, include_matches: bool = True) -> None:
         df1, df2 = self.df1, self.df2
-        df1.get_field_separator()
-        df2.get_field_separator()
 
         if self.effective_keys.k1 is None and self.effective_keys.k2 is None:
             raw1 = df1.read_raw_lines()

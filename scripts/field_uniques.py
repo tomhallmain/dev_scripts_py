@@ -64,7 +64,6 @@ class FieldUniques:
         return [orig for _, orig in numeric] + non_numeric
 
     def run(self) -> None:
-        self.data_file.get_field_separator()
         rows = self.data_file.get_data()
         ofs = self.data_file.field_separator or " "
 

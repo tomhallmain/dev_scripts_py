@@ -286,7 +286,6 @@ def index(args, field_sep, header):
         field_separator=field_sep,
     )
     data_file = ctx.to_data_file()
-    data_file.get_field_separator()
     index_main(data_file, header)
 
 @cli.command(aliases=["t"])
@@ -619,7 +618,9 @@ def decap(args):
     ``FILE [n_lines]`` or ``… | ds . decap [n_lines]`` (``n_lines`` = number of lines to drop).
     """
     from scripts.simple_commands import decap_stdout, parse_decap
-    ctx = CliArgContext.from_click(tuple(args))
+    ctx = CliArgContext.from_click(
+        tuple(args),
+    )
     df, n_remove = parse_decap(ctx)
     decap_stdout(df, n_remove)
 

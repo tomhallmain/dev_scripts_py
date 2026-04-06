@@ -9,6 +9,7 @@ def print_formatted_index(_index, space, max):
         print(_index, end="")
 
 def index_main(data_file, header):
+    data_file.get_field_separator()
     space_fs = 0
     if re.match(r'\[\[:space:\]\]\{2.\}', data_file.field_separator):
         FS = "  "

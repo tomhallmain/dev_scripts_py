@@ -52,7 +52,6 @@ def print_staggered(
         except OSError:
             tty_size = 80
 
-    data_file.get_field_separator()
     rows = data_file.get_data()
 
     def next_indent(current: int) -> int:

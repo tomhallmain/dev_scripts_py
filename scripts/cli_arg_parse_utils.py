@@ -403,12 +403,13 @@ class CliArgContext:
             path = self.path_candidate
             if path and self.path_candidate_rule is PathCandidatePredicate.FIRST_ARG:
                 path = Utils.resolve_relative_path(path)
-            return DataFile.from_cli_file_or_stdin(
+            df = DataFile.from_cli_file_or_stdin(
                 path,
                 self.stdin_text,
                 field_separator=self.field_separator,
                 output_field_separator=self.output_field_separator,
             )
+            return df
         except Exception as e:
             raise click.ClickException(str(e)) from e
 

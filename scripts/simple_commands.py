@@ -344,8 +344,7 @@ class Cardinality:
         self.__ = {}
         self.max_nf = 0
 
-    def process_line(self, line):
-        fields = line.split()
+    def process_row(self, fields):
         for i, field in enumerate(fields, start=1):
             if not self._.get((i, field)):
                 self._[(i, field)] = 1
@@ -362,8 +361,7 @@ class Cardinality:
 def cardinality_cmd(ctx: CliArgContext):
     df = ctx.to_data_file()
     c = Cardinality()
-    with open(df.file_path, encoding="utf-8", errors="replace") as f:
-        for line in f:
-            c.process_line(line)
+    for row in df.get_data():
+        c.process_row(row)
     c.print_cardinality()
 
