@@ -18,6 +18,7 @@ from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
+from pathlib import Path
 
 from scripts.cli import cli
 from scripts.cli_arg_parse_utils import CliArgContext, PathCandidatePredicate
@@ -352,6 +353,45 @@ def test_cardinality_extra_args_warns(tmp_path, runner: CliRunner) -> None:
     assert result.exit_code == 0
     assert "Warning: ignoring" in result.output
     assert "2 extra" in result.output
+
+
+
+# --- todo ---
+
+def test_todo_first_line_matches_shell_example(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``ds:todo tests/commands_tests.sh | head -n1`` style (dev_scripts test)."""
+    monkeypatch.chdir(tmp_path)
+    p = tmp_path / "commands_tests.sh"
+    p.write_text("## TODO: Git tests\n", encoding="utf-8")
+    r = runner.invoke(cli, [".", "todo", "commands_tests.sh"], catch_exceptions=False)
+    assert r.exit_code == 0
+    lines = [ln for ln in r.output.splitlines() if ln.strip()]
+    assert lines[0] == "commands_tests.sh:## TODO: Git tests"
+
+
+def test_todo_missing_path_exits_nonzero(runner: CliRunner) -> None:
+    r = runner.invoke(cli, [".", "todo", "does_not_exist_9f3a"], catch_exceptions=False)
+    assert r.exit_code == 1
+    assert "not a file or directory" in r.output or "could not be searched" in r.output
+
+
+def test_todo_finds_slash_todo_in_file(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.txt").write_text("// TODO fix\n", encoding="utf-8")
+    r = runner.invoke(cli, [".", "todo", "a.txt"], catch_exceptions=False)
+    assert r.exit_code == 0
+    assert "TODO" in r.output
+
+
+def test_tool_availability_detects_python() -> None:
+    from scripts.tool_availability import is_command_available
+
+    assert is_command_available("python") or is_command_available("python3")
+
 
 
 # --- insert, line, goog, jira (Python port; not in t_basic.sh) ---

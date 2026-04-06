@@ -3,7 +3,7 @@ import re
 import subprocess
 import webbrowser
 from pathlib import Path
-from typing import Iterable, List, Optional, Tuple
+from typing import Callable, Iterable, List, Optional, Tuple
 from urllib.parse import quote_plus
 
 import click
@@ -15,6 +15,22 @@ from scripts.cli_arg_parse_utils import (
     parse_non_negative_int_arg,
 )
 from scripts.DataFile import DataFile
+
+# ``ds:todo`` / ``ds . todo`` (same regex as the original bash helper).
+TODO_SEARCH_PATTERN = r"(TODO|FIXME|(^|[^X])XXX)( |:|\-)"
+
+
+def run_todo(
+    paths: Tuple[str, ...],
+    *,
+    echo: Optional[Callable[..., None]] = None,
+) -> int:
+    """
+    Search paths for TODO / FIXME / XXX markers; delegates to :func:`scripts.tool_based_search.run_search`.
+    """
+    from scripts.tool_based_search import run_search
+
+    return run_search(paths, TODO_SEARCH_PATTERN, echo=echo)
 
 
 def path_elements_cmd(filepath: str) -> None:

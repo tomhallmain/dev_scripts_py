@@ -633,6 +633,21 @@ def path_elements(filepath):
     path_elements_cmd(os.path.normpath(filepath))
 
 
+@cli.command(name="todo")
+@click.argument("paths", nargs=-1, required=False)
+def todo(paths):
+    """
+    Find TODO / FIXME / XXX markers under paths (default: current directory).
+
+    Uses ``ripgrep`` when available (see :mod:`scripts.tool_availability`); otherwise scans in Python.
+    """
+    from scripts.simple_commands import run_todo
+
+    code = run_todo(tuple(paths))
+    if code:
+        sys.exit(code)
+
+
 @cli.command(name="iter")
 @click.argument('text')
 @click.argument('n', required=False, default=1, type=int)

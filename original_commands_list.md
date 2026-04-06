@@ -167,9 +167,9 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:mini              |                    | —           |                                              |
 | ds:new               |                    | —           | Shell-specific                               |
 | ds:newfs             |                    | —           |                                              |
-| ds:nset              |                    | —           | Shell-specific                               |
+| ds:nset              |                    | —           | Shell-specific; see `tool_availability` (Python) |
 | ds:ntype             |                    | —           | Shell-specific                               |
-| ds:path_elements     |                    | —           |                                              |
+| ds:path_elements     | `ds path_elements` | ✅          | Tab-separated dir / stem / suffix            |
 | ds:pipe_check        |                    | —           |                                              |
 | ds:pivot             | `ds pivot`         | WIP         | Undefined `prod()` in aggregate              |
 | ds:plot              |                    | —           |                                              |
@@ -195,7 +195,7 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:substr            |                    | —           |                                              |
 | ds:test              |                    | —           |                                              |
 | ds:tmp               |                    | —           |                                              |
-| ds:todo              |                    | —           |                                              |
+| ds:todo              | `ds todo`          | ✅          | Prefers `rg` when cached on PATH; else Python scan |
 | ds:trace             |                    | —           | Shell-specific                               |
 | ds:transpose         | `ds transpose`     | ✅          |                                              |
 | ds:unicode           | `ds unicode`       | ✅          |                                              |
@@ -213,6 +213,7 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | `ds conda_check`     | ✅          | Check conda envs for packages                |
 | `ds conda_envs`      | ✅          | List conda environments with details         |
 | `ds cardinality`     | STUB        | Distinct values per field                    |
+| `tool_availability`  | internal    | PATH probe cache (`rg`, etc.); `DS_REFRESH_TOOL_CACHE=1` clears |
 
 ### Unwired scripts (Python file exists, no CLI command)
 
