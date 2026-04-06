@@ -33,6 +33,12 @@ class PathCandidatePredicate(Enum):
 Predicate = Callable[["CliArgContext"], bool]
 ArgCheck = Tuple[Predicate, str]
 
+# ``extra_arg_warn`` for optional FILE + stdin commands: only the first positional may be FILE.
+EXTRA_ARG_WARN_FIRST_FILE_ONLY: Tuple[int, str] = (
+    1,
+    "Warning: ignoring {extra} extra argument(s); only the first is used as FILE if present.",
+)
+
 
 def _resolved_path_tested_first_arg(args: Tuple[str, ...]) -> Optional[str]:
     """Resolve ``args[0]`` if it names an existing file; else ``None``."""
@@ -63,7 +69,8 @@ class CliArgContext:
     ``args[0]``; a single positional must not be only an existing file).
     ``extra_arg_warn`` is an optional ``(max_used_positionals, template)``: if
     ``len(args)`` exceeds the first value, a yellow stderr warning is printed using ``template``
-    with ``{extra}`` set to the surplus count.
+    with ``{extra}`` set to the surplus count. For optional-``FILE``-or-stdin commands, pass
+    :data:`EXTRA_ARG_WARN_FIRST_FILE_ONLY`.
 
     Optional ``field_separator`` / ``output_field_separator`` are applied when building a
     :class:`~scripts.DataFile.DataFile` via :meth:`to_data_file` (same meaning as in

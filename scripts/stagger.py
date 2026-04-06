@@ -3,7 +3,10 @@ import textwrap
 
 def print_staggered(file_name, stag_size=5, tty_size=None):
     if tty_size is None:
-        tty_size = os.get_terminal_size().columns
+        try:
+            tty_size = os.get_terminal_size().columns
+        except OSError:
+            tty_size = 80
     space = " " * 100
     stag = space[:stag_size]
 

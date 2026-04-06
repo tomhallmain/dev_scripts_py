@@ -4,7 +4,11 @@ import os
 import sys
 
 from scripts.case import TextCaseConverter
-from scripts.cli_arg_parse_utils import CliArgContext, PathCandidatePredicate
+from scripts.cli_arg_parse_utils import (
+    CliArgContext,
+    EXTRA_ARG_WARN_FIRST_FILE_ONLY,
+    PathCandidatePredicate,
+)
 from scripts.DataFile import DataFile
 from scripts.dup_files import dups_main
 from scripts.field_counts import FieldsCounter
@@ -273,10 +277,7 @@ def index(args, field_sep, header):
     ctx = CliArgContext.from_click(
         tuple(args),
         path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
-        extra_arg_warn=(
-            1,
-            "Warning: ignoring {extra} extra argument(s); only the first is used as FILE if present.",
-        ),
+        extra_arg_warn=EXTRA_ARG_WARN_FIRST_FILE_ONLY,
         field_separator=field_sep,
     )
     data_file = ctx.to_data_file()
@@ -294,10 +295,7 @@ def transpose(args, field_sep, ofs):
     ctx = CliArgContext.from_click(
         tuple(args),
         path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
-        extra_arg_warn=(
-            1,
-            "Warning: ignoring {extra} extra argument(s); only the first is used as FILE if present.",
-        ),
+        extra_arg_warn=EXTRA_ARG_WARN_FIRST_FILE_ONLY,
         field_separator=field_sep,
         output_field_separator=ofs,
     )
@@ -352,10 +350,7 @@ def field_counts(args, field_sep, ofs, fields="0", min=1, only_vals=False):
     ctx = CliArgContext.from_click(
         tuple(args),
         path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
-        extra_arg_warn=(
-            1,
-            "Warning: ignoring {extra} extra argument(s); only the first is used as FILE if present.",
-        ),
+        extra_arg_warn=EXTRA_ARG_WARN_FIRST_FILE_ONLY,
         field_separator=field_sep,
         output_field_separator=ofs,
     )
@@ -768,10 +763,7 @@ def power(args, min_count, return_fields, invert, choose):
     ctx = CliArgContext.from_click(
         tuple(args),
         path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
-        extra_arg_warn=(
-            1,
-            "Warning: ignoring {extra} extra argument(s); only the first is used as FILE if present.",
-        ),
+        extra_arg_warn=EXTRA_ARG_WARN_FIRST_FILE_ONLY,
     )
     data_file = ctx.to_data_file()
     analyzer = DataAnalyzer(data_file, min=min_count, return_fields=return_fields, invert=invert, choose=choose)
@@ -841,10 +833,7 @@ def graph(args, print_bases):
     ctx = CliArgContext.from_click(
         tuple(args),
         path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
-        extra_arg_warn=(
-            1,
-            "Warning: ignoring {extra} extra argument(s); only the first is used as FILE if present.",
-        ),
+        extra_arg_warn=EXTRA_ARG_WARN_FIRST_FILE_ONLY,
     )
     data_file = ctx.to_data_file()
     code = run_graph(data_file, print_bases=print_bases, echo=click.echo)
@@ -853,18 +842,26 @@ def graph(args, print_bases):
 
 
 @cli.command()
-@click.argument('filepath', type=click.Path(exists=True))
+@click.argument("args", nargs=-1, required=False)
 @click.option('--stag-size', '-s', default=5, help="Number of spaces to indent per field")
 @wip
-def stagger(filepath, stag_size):
+def stagger(args, stag_size):
     """
-    Print tabular data in staggered rows.
+    Print tabular data in staggered rows: optional ``FILE`` or stdin.
 
-    Example:  ds . stagger data.txt --stag-size 4
+    Examples::
+
+        ds . stagger data.txt --stag-size 4
+        cat data.txt | ds . stagger -s 4
     """
     from scripts.stagger import print_staggered
-    filepath = Utils.resolve_relative_path(filepath)
-    print_staggered(filepath, stag_size=stag_size)
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        extra_arg_warn=EXTRA_ARG_WARN_FIRST_FILE_ONLY,
+    )
+    data_file = ctx.to_data_file()
+    print_staggered(data_file.file_path, stag_size=stag_size)
 
 
 @cli.command()
@@ -1007,10 +1004,7 @@ def cardinality(args):
     ctx = CliArgContext.from_click(
         tuple(args),
         path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
-        extra_arg_warn=(
-            1,
-            "Warning: ignoring {extra} extra argument(s); only the first is used as FILE if present.",
-        ),
+        extra_arg_warn=EXTRA_ARG_WARN_FIRST_FILE_ONLY,
     )
     cardinality_cmd(ctx)
 
@@ -1041,21 +1035,29 @@ def shape():
 
 
 @cli.command(name="field_uniques", aliases=["u"])
-@click.option("-f", "--file", "filepath", type=click.Path(exists=True), default=None, help="Input file (default: stdin)")
-@click.argument("fields_spec", default="a")
-@click.argument("min_count", type=int, default=1)
-@click.argument("order", default="a")
-def field_uniques(filepath, fields_spec, min_count, order):
+@click.argument("args", nargs=-1, required=False)
+@click.option("-f", "--fields", "fields_spec", default="a", show_default=True, help="Which fields to use (e.g. comma-separated 1-based indices, or 'a' for whole row).")
+@click.option("-m", "--min-count", type=int, default=1, show_default=True, help="Minimum occurrence count before a value is printed.")
+@click.option("-o", "--order", "order", default="a", show_default=True, help="Output sort: ascending (a) or descending (d / r).")
+def field_uniques(args, fields_spec, min_count, order):
     """
-    Get unique values from specified fields (file or stdin).
+    Get unique values from specified fields: optional ``FILE`` or stdin.
 
-    Example:  cat data.txt | ds . field_uniques
-    Example:  ds . field_uniques -f data.txt 1 3 a
+    Options set field selection, threshold, and sort (defaults match the prior port: ``a``, ``1``, ``a``).
+
+    Examples::
+
+        cat data.txt | ds . field_uniques
+        ds . field_uniques data.txt -f 1 -m 3 -o a
     """
     from scripts.field_uniques import FieldUniques
 
-    path = Utils.resolve_relative_path(filepath) if filepath else None
-    data_file = DataFile(path)
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        extra_arg_warn=EXTRA_ARG_WARN_FIRST_FILE_ONLY,
+    )
+    data_file = ctx.to_data_file()
     FieldUniques(data_file, fields_spec=fields_spec, min_user=min_count, order=order).run()
 
 
