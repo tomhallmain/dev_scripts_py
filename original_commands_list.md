@@ -163,7 +163,7 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:join              | `ds join`          | ✅          |                                              |
 | ds:join_by           | `ds join_by`       | ✅          |                                              |
 | ds:line              | `ds line`          | ✅          | Supports `{line}` placeholder in command      |
-| ds:matches           | `ds matches`       | ✅          |                                              |
+| ds:matches           | `ds matches`       | ✅          | Two paths or one path + stdin; `-k` / `--key1` / `--key2`, `--verbose` |
 | ds:mini              |                    | —           |                                              |
 | ds:new               |                    | —           | Shell-specific                               |
 | ds:newfs             |                    | —           |                                              |

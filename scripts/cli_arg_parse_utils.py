@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 import re
 import sys
-from dataclasses import InitVar, dataclass
+from dataclasses import InitVar, dataclass, field
 from enum import Enum, auto
 from typing import Callable, List, Optional, Sequence, Tuple
 
@@ -88,20 +88,76 @@ def _greedy_leading_file_paths(args: Tuple[str, ...]) -> Tuple[List[str], int]:
     return out, i
 
 
-@dataclass(frozen=True)
+@dataclass
 class JoinStylePathResolution:
     """Result of :meth:`CliArgContext.resolve_join_style_paths`.
 
-    - **Pipe (stdin present):** :attr:`path_paths` is a single file; :attr:`stdin_replaces_second_file`
-      is True; the second input is only :attr:`~CliArgContext.stdin_text` materialized by the
-      caller. :attr:`remaining_args` is ``args[1:]``.
-    - **TTY:** :attr:`path_paths` has **at least two** leading files (pair or longer chain); stdin is
-      not read as data. :attr:`remaining_args` follows the last consumed path token.
+    Holds resolved path strings; :meth:`materialize_data_files` fills :attr:`data_files` once the
+    command knows ``field_separator`` and :attr:`~CliArgContext.stdin_text` (stdin-backed rows need
+    the latter).
+
+    - **Two or more leading files:** :attr:`path_paths` is **every** greedily resolved path (length
+      ≥ 2). Stdin is ignored for pairing — this supports **N-way** pipelines (e.g. recursive
+      ``join``) where the command folds over ``path_paths``. Pair-only commands call
+      :meth:`require_exactly_two_inputs` before materializing.
+    - **Pipe (stdin present, one file):** :attr:`path_paths` is a single file;
+      :attr:`stdin_replaces_second_file` is True; the second input is stdin only.
+      :attr:`remaining_args` is ``args[1:]``.
     """
 
     path_paths: Tuple[str, ...]
     stdin_replaces_second_file: bool
     remaining_args: Tuple[str, ...]
+    data_files: Optional[List[DataFile]] = field(default=None, repr=False)
+
+    def require_exactly_two_inputs(self, *, message: str) -> None:
+        """Raise :exc:`click.ClickException` unless there are exactly two logical inputs.
+
+        When :attr:`stdin_replaces_second_file` is true, one path plus stdin counts as two. When it
+        is false, there must be exactly two resolved file paths (not three or more).
+        """
+        if self.stdin_replaces_second_file:
+            return
+        if len(self.path_paths) != 2:
+            raise click.ClickException(message)
+
+    def materialize_data_files(
+        self,
+        *,
+        stdin_text: Optional[str],
+        field_separator: Optional[str] = None,
+    ) -> List[DataFile]:
+        """Open a :class:`~scripts.DataFile.DataFile` per resolved path, plus stdin when applicable.
+
+        Sets :attr:`data_files` and returns the same list.
+
+        - **``stdin_replaces_second_file``:** ``[df_first, df_stdin]`` (second may use a temp file).
+        - **Otherwise:** one ``DataFile`` per :attr:`path_paths` entry (length 2, 3, …).
+
+        Call :meth:`cleanup_stdin_backed_data_files` when done (or cleanup each stdin-backed file
+        yourself).
+        """
+        if self.stdin_replaces_second_file:
+            if len(self.path_paths) != 1:
+                raise ValueError(
+                    "stdin-as-second mode requires exactly one path in path_paths; got "
+                    f"{len(self.path_paths)}"
+                )
+            self.data_files = [
+                DataFile(self.path_paths[0], field_separator),
+                DataFile(None, field_separator, stdin_text=stdin_text),
+            ]
+        else:
+            self.data_files = [DataFile(p, field_separator) for p in self.path_paths]
+        return self.data_files
+
+    def cleanup_stdin_backed_data_files(self) -> None:
+        """Call :meth:`~scripts.DataFile.DataFile.cleanup_temp_file` on stdin-backed instances."""
+        if not self.data_files:
+            return
+        for df in self.data_files:
+            if df.is_stdin:
+                df.cleanup_temp_file()
 
 
 @dataclass(frozen=True)
@@ -259,13 +315,15 @@ class CliArgContext:
         """Parse join / diff style inputs when :attr:`path_candidate_rule` is
         :attr:`PathCandidatePredicate.PAIR_CHAIN_OR_STDIN_SECOND`.
 
-        **Piped stdin** (``stdin_text`` is not ``None``): require ``args[0]`` to name an existing
-        file (first dataset). The second dataset is **only** stdin; ``args[1:]`` are passed
-        through as ``remaining_args`` (not interpreted as extra file paths).
+        **Two or more leading files:** greedily consume path tokens that name existing files. If
+        there are at least **two**, stdin is **ignored** (handles empty ``stdin`` from test runners
+        and ``CliRunner``).
 
-        **Interactive TTY** (``stdin_text`` is ``None``): greedily take leading positionals that
-        name existing files; require at least **two** for a pair or chain; stdin is not used as
-        input data.
+        **Otherwise, piped stdin** (``stdin_text`` is not ``None``): require exactly **one**
+        leading file path; the second dataset is **only** stdin.
+
+        **Otherwise (TTY, fewer than two files):** require a pipe or more paths — same error as
+        before.
         """
         if self.path_candidate_rule is not PathCandidatePredicate.PAIR_CHAIN_OR_STDIN_SECOND:
             raise ValueError(
@@ -273,33 +331,30 @@ class CliArgContext:
                 "PAIR_CHAIN_OR_STDIN_SECOND"
             )
 
+        leading_paths, consumed = _greedy_leading_file_paths(self.args)
+
+        if len(leading_paths) >= 2:
+            return JoinStylePathResolution(
+                path_paths=tuple(leading_paths),
+                stdin_replaces_second_file=False,
+                remaining_args=self.args[consumed:],
+            )
+
         if self.stdin_text is not None:
-            if not self.args:
+            if len(leading_paths) != 1:
                 raise click.ClickException(
-                    "A FILE path is required as the first argument when the second input is stdin."
-                )
-            first = _resolve_if_existing_file(self.args[0])
-            if first is None:
-                raise click.ClickException(
-                    f"first argument must be an existing file when piping the second input: "
-                    f"{self.args[0]!r}"
+                    "A single existing FILE path is required when the second input is stdin "
+                    "(or use two FILE paths without piping)."
                 )
             return JoinStylePathResolution(
-                path_paths=(first,),
+                path_paths=(leading_paths[0],),
                 stdin_replaces_second_file=True,
                 remaining_args=self.args[1:],
             )
 
-        paths, consumed = _greedy_leading_file_paths(self.args)
-        if len(paths) < 2:
-            raise click.ClickException(
-                "At least two existing FILE paths are required when stdin is a TTY "
-                "(pipe data on stdin to use one file argument plus stdin as the second input)."
-            )
-        return JoinStylePathResolution(
-            path_paths=tuple(paths),
-            stdin_replaces_second_file=False,
-            remaining_args=self.args[consumed:],
+        raise click.ClickException(
+            "At least two existing FILE paths are required when stdin is a TTY "
+            "(pipe data on stdin to use one file path plus stdin as the second input)."
         )
 
     def to_data_file(self) -> DataFile:
@@ -328,6 +383,12 @@ def apply_arg_predicates(ctx: CliArgContext, checks: Sequence[ArgCheck]) -> None
     for predicate, message in checks:
         if predicate(ctx):
             raise click.ClickException(message)
+
+
+def validate_positive_key_field(name: str, value: Optional[int]) -> None:
+    """Raise :exc:`click.ClickException` if ``value`` is set and not a valid 1-based index."""
+    if value is not None and value < 1:
+        raise click.ClickException(f"{name} must be a positive (1-based) field index")
 
 
 def parse_non_negative_int_arg(

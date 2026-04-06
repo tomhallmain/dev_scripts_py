@@ -756,22 +756,24 @@ def conda_envs(as_json, sort):
 # ---------------------------------------------------------------------------
 
 @cli.command()
-@click.argument('file1', type=click.Path(exists=True))
-@click.argument('file2', type=click.Path(exists=True))
-@click.option('--key', '-k', type=int, default=None, help="Key field index (1-based) for matching")
-@click.option('--fs', '-s', default=None, help="Field separator for both files")
-def matches(file1, file2, key, fs):
+@click.argument("args", nargs=-1, required=False)
+@click.option("--key", "-k", "key", type=int, default=None, help="Key field index (1-based) for both files")
+@click.option("--key1", type=int, default=None, help="Key field index for the first file (1-based)")
+@click.option("--key2", type=int, default=None, help="Key field index for the second file (1-based)")
+@click.option("--fs", "-s", "fs", default=None, help="Field separator for both files")
+@click.option("--verbose", is_flag=True, help="When matches exist, print a short banner (two extra lines before rows)")
+def matches(args, key, key1, key2, fs, verbose):
     """
-    Get matching records between two files.
+    Lines from the second file whose key appears in the first file (two FILE paths, or one FILE
+    with the second dataset on stdin).
 
-    Example:  ds . matches data1.csv data2.csv --key 1
+    Examples::
+
+        ds . matches a.csv b.csv -k 1
+        cat b.csv | ds . matches a.csv -k 1
     """
-    from scripts.matches import FileComparator
-    file1 = Utils.resolve_relative_path(file1)
-    file2 = Utils.resolve_relative_path(file2)
-    comparator = FileComparator(file1, file2, fs=fs, key=key)
-    comparator.compare_files()
-    comparator.print_matches()
+    from scripts.matches import run_matches
+    run_matches(tuple(args), key=key, key1=key1, key2=key2, fs=fs, verbose=verbose)
 
 
 @cli.command(name="power")
