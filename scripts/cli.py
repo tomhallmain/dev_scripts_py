@@ -837,8 +837,7 @@ def graph(args, print_bases):
         cat edges.txt | ds . graph --print-bases
         ds . graph edges.txt -p
     """
-    from scripts.graph import GraphDagBacktrace
-
+    from scripts.graph import run_graph
     ctx = CliArgContext.from_click(
         tuple(args),
         path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
@@ -848,8 +847,7 @@ def graph(args, print_bases):
         ),
     )
     data_file = ctx.to_data_file()
-    with open(data_file.file_path, encoding="utf-8", errors="replace") as f:
-        code = GraphDagBacktrace(print_bases=print_bases, echo=click.echo).run(f)
+    code = run_graph(data_file, print_bases=print_bases, echo=click.echo)
     if code:
         sys.exit(code)
 

@@ -5,6 +5,9 @@ import argparse
 import sys
 from typing import Callable, Iterable
 
+from scripts.DataFile import DataFile
+
+
 def backtrace(start, test_base, shoots):
     if test_base in shoots:
         return extend(backtrace(test_base, shoots[test_base], shoots), start)
@@ -60,6 +63,17 @@ class GraphDagBacktrace:
                 self.echo(f"CYCLENODE__ {cycle}")
             return 1
         return 0
+
+
+def run_graph(
+    data_file: DataFile,
+    *,
+    print_bases: bool = False,
+    echo: Callable[[str], None] = print,
+) -> int:
+    """Read graph lines from ``data_file`` (UTF-8); return 0 or 1 if cycles detected."""
+    with open(data_file.file_path, encoding="utf-8", errors="replace") as f:
+        return GraphDagBacktrace(print_bases=print_bases, echo=echo).run(f)
 
 
 def main():
