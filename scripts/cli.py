@@ -723,19 +723,26 @@ def random_cmd(mode, text):
 
 
 @cli.command(name="unicode")
-@click.argument('conversion', default="codepoint", type=click.Choice(['codepoint', 'hex', 'octet']))
-def unicode_cmd(conversion):
+@click.argument("args", nargs=-1)
+def unicode_cmd(args):
     """
-    Convert UTF-8 unicode representations from stdin.
+    Show ``\\U`` codepoint escapes or UTF-8 percent-encoded bytes.
 
-    CONVERSION is 'codepoint' (default), 'hex', or 'octet'.
+    With no arguments, reads stdin (default mode: codepoint).
 
-    Example:  echo "data" | ds . unicode hex
+    One argument: if it is ``codepoint``, ``hex``, or ``octet``, reads stdin in that mode;
+    otherwise treats the argument as the input string (codepoint mode).
+
+    Two arguments: ``TEXT`` then ``codepoint`` | ``hex`` | ``octet``.
+
+    Examples::
+
+        ds . unicode "cats😼😻"
+        echo "cats😼😻" | ds . unicode
+        ds . unicode "cats😼😻" hex
     """
-    from scripts.unicode import Converter
-    converter = Converter()
-    converter.set_conversion_type(conversion)
-    converter.convert_input(sys.stdin)
+    from scripts.unicode import run_unicode
+    run_unicode(args)
 
 
 # ---------------------------------------------------------------------------

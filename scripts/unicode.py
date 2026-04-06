@@ -1,52 +1,62 @@
+"""
+UTF-8 / Unicode escapes: codepoint (``\\U`` hex per character) or UTF-8 percent (``hex`` / ``octet``).
+
+Parity with ``ds:unicode`` from dev_scripts (``commands.sh`` + ``xxd``/``bc`` pipeline), without those tools.
+"""
+from __future__ import annotations
+
 import sys
-import re
+from typing import Literal
 
-class Converter:
-    def __init__(self, to=0):
-        self.to = to
-    def convert_line(self, line):
-        fields = line.split()
-        d = ""
-        b = [""] * 4
-        if self.to < 1:
-            # Codepoint case
-            if re.match(r'^[0-1]+', fields[2]):
-                b[0] = fields[1][4:8]
-                b[1] = fields[2][2:8]
+Mode = Literal["codepoint", "hex", "octet"]
 
-                if re.match(r'^[0-1]+', fields[3]):
-                    b[2] = fields[3][2:8]
-                    if re.match(r'^[0-1]+', fields[4]):
-                        b[3] = fields[4][2:8]
-            else:
-                b[0] = fields[1][1:8]
 
-            for i in range(len(b)):
-                d += b[i]
-        elif self.to == 1:
-            # Octet/hex case
-            for i in range(1, len(fields)):
-                if i < 1: 
-                    continue
-                if re.match(r'^[0-1]+', fields[i]):
-                    if d:
-                        d += ";" + fields[i]
-                    else:
-                        d = fields[i]
-        print("obase=16; ibase=2; " + d)
+def format_unicode(text: str, mode: Mode = "codepoint") -> str:
+    """
+    ``codepoint``: ``\\U`` + uppercase minimal hex per Unicode scalar (e.g. ``\\U63``, ``\\U1F63C``).
 
-    def set_conversion_type(self, conversion_type):
-        if conversion_type == "codepoint":
-            self.to = 0
-        elif conversion_type == "octet" or conversion_type == "hex":
-            self.to = 1
+    ``hex`` / ``octet``: for each character, ``%`` + concatenated uppercase hex of its UTF-8 bytes
+    (e.g. ASCII ``%63``, emoji ``%F09F98BC``), matching ``ds:unicode`` / ``xxd`` output.
+    """
+    if mode == "codepoint":
+        return "".join(f"\\U{ord(ch):X}" for ch in text)
+    if mode in ("hex", "octet"):
+        out: list[str] = []
+        for ch in text:
+            raw = ch.encode("utf-8")
+            blob = "".join(f"{b:02X}" for b in raw)
+            out.append(f"%{blob}")
+        return "".join(out)
+    raise ValueError(f"unknown mode: {mode!r}")
 
-    def convert_input(self, input_lines):
-        for line in input_lines:
-            self.convert_line(line)
+
+def run_unicode(argv: tuple[str, ...] | list[str]) -> None:
+    """CLI entry: ``[]`` → stdin; ``[mode]`` if mode is codepoint|hex|octet → stdin; else ``[text]`` or ``[text, mode]``."""
+    import click
+
+    known: frozenset[str] = frozenset({"codepoint", "hex", "octet"})
+    args = tuple(argv)
+
+    if not args:
+        raw = sys.stdin.read()
+        mode: Mode = "codepoint"
+    elif len(args) == 1:
+        if args[0] in known:
+            raw = sys.stdin.read()
+            mode = args[0]  # type: ignore[assignment]
+        else:
+            raw = args[0]
+            mode = "codepoint"
+    else:
+        raw = args[0]
+        m = args[1]
+        if m not in known:
+            raise click.ClickException(f"conversion must be one of {sorted(known)}, got {m!r}")
+        mode = m  # type: ignore[assignment]
+
+    text = raw.rstrip("\n\r")
+    click.echo(format_unicode(text, mode), nl=True)
+
 
 if __name__ == "__main__":
-    converter = Converter()
-    if len(sys.argv) > 1:
-        converter.set_conversion_type(sys.argv[1])
-    converter.convert_input(sys.stdin)
+    run_unicode(tuple(sys.argv[1:]))

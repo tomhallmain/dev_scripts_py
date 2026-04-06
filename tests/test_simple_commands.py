@@ -6,6 +6,7 @@ t_basic.sh references:
 - join_by: pipe and positional args -> "1, 2, 3"
 - iter: ds:iter "a" 3 -> "aaa"
 - rev: printf a\\nb\\nc\\nd | ds:rev -> lines reversed (concatenated: dcba)
+- unicode: ds:unicode "cats😼😻" / pipe / hex (\\U… and %… forms)
 """
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ import pytest
 from click.testing import CliRunner
 
 from scripts.cli import cli
+from scripts.unicode import format_unicode
 
 
 @pytest.fixture
@@ -70,6 +72,101 @@ def test_rev_matches_t_basic(runner: CliRunner) -> None:
 
 def test_join_by_too_few_args_fails(runner: CliRunner) -> None:
     result = runner.invoke(cli, [".", "join_by", ", ", "only"], catch_exceptions=False)
+    assert result.exit_code != 0
+
+
+# --- t_basic.sh parity: unicode ---
+
+# echo -n to avoid extra newline in string; shell strips one trailing newline from $(...)
+CATS_WITH_MOJIS = "cats\U0001f63c\U0001f63b"
+
+# t_basic.sh: ds:unicode / ds:unicode … hex
+T_BASIC_UNICODE_CATS_CODEPOINT = r"\U63\U61\U74\U73\U1F63C\U1F63B"
+T_BASIC_UNICODE_CATS_HEX = "%63%61%74%73%F09F98BC%F09F98BB"
+
+
+def test_format_unicode_cats_codepoint_matches_t_basic() -> None:
+    assert format_unicode(CATS_WITH_MOJIS, "codepoint") == T_BASIC_UNICODE_CATS_CODEPOINT
+
+
+def test_format_unicode_cats_hex_matches_t_basic() -> None:
+    assert format_unicode(CATS_WITH_MOJIS, "hex") == T_BASIC_UNICODE_CATS_HEX
+
+
+def test_format_unicode_hex_and_octet_match_for_utf8_blobs() -> None:
+    """Shell uses the same branch for hex and octet; per-char UTF-8 % blobs match."""
+    assert format_unicode(CATS_WITH_MOJIS, "octet") == format_unicode(CATS_WITH_MOJIS, "hex")
+
+
+def test_unicode_cli_positional_codepoint_matches_t_basic(runner: CliRunner) -> None:
+    result = runner.invoke(
+        cli,
+        [".", "unicode", CATS_WITH_MOJIS],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert result.output.rstrip("\n") == T_BASIC_UNICODE_CATS_CODEPOINT
+
+
+def test_unicode_cli_stdin_codepoint_matches_t_basic(runner: CliRunner) -> None:
+    result = runner.invoke(
+        cli,
+        [".", "unicode"],
+        input=CATS_WITH_MOJIS + "\n",
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert result.output.rstrip("\n") == T_BASIC_UNICODE_CATS_CODEPOINT
+
+
+def test_unicode_cli_positional_hex_matches_t_basic(runner: CliRunner) -> None:
+    result = runner.invoke(
+        cli,
+        [".", "unicode", CATS_WITH_MOJIS, "hex"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert result.output.rstrip("\n") == T_BASIC_UNICODE_CATS_HEX
+
+
+def test_unicode_cli_stdin_hex_single_arg(runner: CliRunner) -> None:
+    """``echo … | ds:unicode hex`` → one argument selects mode, body from stdin."""
+    result = runner.invoke(
+        cli,
+        [".", "unicode", "hex"],
+        input=CATS_WITH_MOJIS + "\n",
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert result.output.rstrip("\n") == T_BASIC_UNICODE_CATS_HEX
+
+
+def test_unicode_cli_stdin_explicit_codepoint(runner: CliRunner) -> None:
+    result = runner.invoke(
+        cli,
+        [".", "unicode", "codepoint"],
+        input=CATS_WITH_MOJIS + "\n",
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert result.output.rstrip("\n") == T_BASIC_UNICODE_CATS_CODEPOINT
+
+
+def test_format_unicode_ascii_single_char() -> None:
+    assert format_unicode("a", "codepoint") == r"\U61"
+
+
+def test_format_unicode_empty() -> None:
+    assert format_unicode("", "codepoint") == ""
+    assert format_unicode("", "hex") == ""
+
+
+def test_unicode_cli_invalid_conversion_exits(runner: CliRunner) -> None:
+    result = runner.invoke(
+        cli,
+        [".", "unicode", "x", "nope"],
+        catch_exceptions=False,
+    )
     assert result.exit_code != 0
 
 
