@@ -127,7 +127,7 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:embrace           | `ds embrace`       | ✅          |                                              |
 | ds:enti              | `ds enti`          | STUB        |                                              |
 | ds:fail              |                    | —           | Shell-specific                               |
-| ds:field_replace     |                    | —           |                                              |
+| ds:field_replace     | `ds field_replace` | ✅          | Supports [FILE] or stdin, expression/key/pattern |
 | ds:fieldcounts       | `ds field_counts`  | ✅          |                                              |
 | ds:filename_str      |                    | —           |                                              |
 | ds:fit               | `ds fit`           | STUB        | All methods are stubs                        |

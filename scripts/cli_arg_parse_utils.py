@@ -212,6 +212,7 @@ class CliArgContext:
     bad_length_message: InitVar[Optional[str]] = None
     tested_first_arg_file_pair_rules: InitVar[bool] = False
     extra_arg_warn: InitVar[Optional[Tuple[int, str]]] = None
+    no_arg_exception_text: InitVar[Optional[str]] = None
 
     def __post_init__(
         self,
@@ -219,7 +220,11 @@ class CliArgContext:
         bad_length_message: Optional[str],
         tested_first_arg_file_pair_rules: bool,
         extra_arg_warn: Optional[Tuple[int, str]],
+        no_arg_exception_text: Optional[str],
     ) -> None:
+        if no_arg_exception_text is not None and len(self.args) == 0:
+            raise click.ClickException(no_arg_exception_text)
+
         if extra_arg_warn is not None:
             max_used, template = extra_arg_warn
             if len(self.args) > max_used:
@@ -262,6 +267,7 @@ class CliArgContext:
         bad_length_message: Optional[str] = None,
         tested_first_arg_file_pair_rules: bool = False,
         extra_arg_warn: Optional[Tuple[int, str]] = None,
+        no_arg_exception_text: Optional[str] = None,
         field_separator: Optional[str] = None,
         output_field_separator: Optional[str] = None,
     ) -> CliArgContext:
@@ -288,6 +294,7 @@ class CliArgContext:
             bad_length_message=bad_length_message,
             tested_first_arg_file_pair_rules=tested_first_arg_file_pair_rules,
             extra_arg_warn=extra_arg_warn,
+            no_arg_exception_text=no_arg_exception_text,
         )
 
     @property

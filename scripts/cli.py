@@ -8,6 +8,7 @@ from scripts.cli_arg_parse_utils import (
     CliArgContext,
     EXTRA_ARG_WARN_FIRST_FILE_ONLY,
     PathCandidatePredicate,
+    validate_positive_key_field,
 )
 from scripts.DataFile import DataFile
 from scripts.dup_files import dups_main
@@ -796,6 +797,37 @@ def comps(args, key, key1, key2, fs, verbose):
     code = run_comps(tuple(args), key=key, key1=key1, key2=key2, fs=fs, verbose=verbose)
     if code:
         sys.exit(code)
+
+
+@cli.command(name="field_replace")
+@click.argument("args", nargs=-1, required=False)
+@click.option("--key", "-k", "key", type=int, default=1, show_default=True, help="1-based field index to replace")
+@click.option("--pattern", "-p", "pattern", default="", show_default=True, help="Regex pattern the target field must match")
+def field_replace(args, key, pattern):
+    """
+    Overwrite a field value when it matches a regex pattern.
+
+    Syntax: ``[FILE] replacement_expr [key=1] [pattern='']``.
+    """
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        no_arg_exception_text=(
+            "field_replace requires replacement_expr (and optional FILE, key, pattern)."
+        ),
+        extra_arg_warn=(
+            2,
+            "Warning: ignoring {extra} extra argument(s) after [FILE] replacement_expr.",
+        ),
+    )
+    replacement_expr = ctx.shifted_arg(0)
+    validate_positive_key_field("--key", key)
+    df = ctx.to_data_file()
+    try:
+        rendered = df.field_replace(replacement_expr, key=key, pattern=pattern)
+        click.echo(rendered, nl=False)
+    finally:
+        df.cleanup_temp_file()
 
 
 @cli.command(name="power")

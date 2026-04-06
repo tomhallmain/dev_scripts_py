@@ -1,6 +1,7 @@
 import csv
 import os
 import re
+import random
 import sys
 import tempfile
 from typing import Optional
@@ -211,6 +212,64 @@ class DataFile:
         )
         for line in self.transpose():
             print(sep.join(str(x) for x in line))
+
+    @staticmethod
+    def _awk_expr_to_python(expr: str) -> str:
+        """Convert a small AWK-like expression into Python syntax."""
+        s = expr.strip().replace("&&", " and ").replace("||", " or ")
+        q = s.find("?")
+        if q == -1:
+            return s
+        c = s.find(":", q + 1)
+        if c == -1:
+            return s
+        cond = s[:q].strip()
+        left = s[q + 1:c].strip()
+        right = s[c + 1:].strip()
+        return f"({left}) if ({cond}) else ({right})"
+
+    @staticmethod
+    def _coerce_awk_val(raw: str):
+        if raw == "":
+            return 0
+        if re.fullmatch(r"-?\d+", raw):
+            return int(raw)
+        if re.fullmatch(r"-?\d+\.\d+", raw):
+            return float(raw)
+        return raw
+
+    def field_replace(self, replacement_expr: str, *, key: int = 1, pattern: str = "") -> str:
+        """
+        Replace one field using an expression over ``val`` for each matching row.
+
+        ``replacement_expr`` follows the shell helper style (for example:
+        ``val > 2 ? -1 : 11``). ``pattern`` is a regex tested against the raw field text.
+        """
+        if key < 1:
+            raise Exception(f"Invalid key provided: {key}")
+        self.get_field_separator()
+        fs = self.field_separator or ""
+        rows = self.get_data()
+        rx = re.compile(pattern) if pattern is not None else re.compile("")
+        py_expr = self._awk_expr_to_python(replacement_expr)
+
+        out_lines = []
+        idx = key - 1
+        for row in rows:
+            if idx >= len(row):
+                row.extend([""] * (idx + 1 - len(row)))
+            raw_val = row[idx]
+            if rx.search(raw_val):
+                val = self._coerce_awk_val(raw_val)
+                row[idx] = str(
+                    eval(  # noqa: S307 - command intentionally evaluates user expression
+                        py_expr,
+                        {"__builtins__": {}},
+                        {"val": val, "rand": random.random},
+                    )
+                )
+            out_lines.append(fs.join(row))
+        return "\n".join(out_lines)
 
     @staticmethod
     def cleanup():
