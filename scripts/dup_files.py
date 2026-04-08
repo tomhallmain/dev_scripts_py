@@ -145,7 +145,9 @@ class DuplicateRemover:
         return best_duplicate, duplicates_to_remove
 
     def handle_duplicates(self, testing, skip_confirm=True):
-        for file_list in self.duplicates.values():
+        sorted_groups = sorted(self.duplicates.values(),
+                               key=lambda fl: min(os.path.basename(f) for f in fl))
+        for file_list in sorted_groups:
             best_duplicate, duplicates_to_remove = self.determine_duplicates(file_list)
             if (self.match_dir and len(duplicates_to_remove) == 0) or best_duplicate is None:
                 continue
