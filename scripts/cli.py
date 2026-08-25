@@ -1113,12 +1113,58 @@ def fit():
 
 
 @cli.command(name="reo")
-@stub
-def reo():
+@click.argument("args", nargs=-1, required=False)
+@click.option('--idx', is_flag=True, help="Prefix output with source row/column index numbers")
+@click.option('--uniq', is_flag=True, help="Constrain the result to unique indices")
+@click.option('--cased', is_flag=True, help="Match patterns case-sensitively")
+@click.option('--field-sep', '-s', default=None, help="Override the inferred field separator")
+def reo(args, idx, uniq, cased, field_sep):
     """
     Reorder, repeat, or slice data by rows and columns.
+
+    ``[FILE] [ROWS] [COLS]`` or ``[ROWS] [COLS]`` with data on stdin. Each order argument is
+    a comma-separated list of indices, ranges (``2..5``), ``rev``, ``others``, expressions
+    (``NR%2``), searches (``~pat``), frames (``[hdr~val``) or anchors (``start##end``).
+    Pass ``off`` as COLS to leave field separation alone.
+
+    Example::
+
+        ds . reo data.csv 1,3..5 rev
+        cat data.txt | ds . reo '~error' '[level'
     """
-    click.echo("Not yet ported.")
+    from scripts.reorder import Reorder, ReorderError
+
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        extra_arg_warn=(
+            3,
+            "Warning: ignoring {extra} extra argument(s) after FILE, ROWS and COLS.",
+        ),
+    )
+    shift = 1 if ctx.resolved_path else 0
+    positional = ctx.args[shift:]
+    rows_arg = positional[0] if len(positional) > 0 else None
+    cols_arg = positional[1] if len(positional) > 1 else None
+
+    data_file = ctx.to_data_file()
+    if field_sep is None:
+        try:
+            field_sep = data_file.get_field_separator()
+        except Exception:
+            field_sep = None
+
+    cols_off = (cols_arg or "").strip().lower() == "off"
+    try:
+        reorder = Reorder(
+            rows_arg, None if cols_off else cols_arg,
+            field_separator=field_sep, ofs=field_sep or " ",
+            uniq=uniq, idx=idx, cols_off=cols_off, cased=cased,
+        )
+        for line in reorder.transform_file(data_file.file_path):
+            click.echo(line)
+    except ReorderError as e:
+        raise click.ClickException(str(e)) from e
 
 
 @cli.command(name="sortm", aliases=["s"])

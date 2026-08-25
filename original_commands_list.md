@@ -177,7 +177,7 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:prod              | `ds prod`          | STUB        |                                              |
 | ds:random            | `ds random`        | ✅          |                                              |
 | ds:recent            |                    | —           |                                              |
-| ds:reo               | `ds reo`           | STUB        | All methods are stubs                        |
+| ds:reo               | `ds reo`           | ✅          | Full port: indices/ranges, rev/others, expressions, searches, frames, anchors |
 | ds:rev               | `ds rev`           | ✅          | Reads from stdin                              |
 | ds:searchn           |                    | —           | Shell-specific                               |
 | ds:searchx           |                    | script only | `curlies.py` exists but not wired            |

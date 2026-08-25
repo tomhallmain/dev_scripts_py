@@ -73,6 +73,7 @@ ds <command> --help
 
 - `ds join <file1> [file2]` - Join data files
 - `ds transpose [filepath]` - Transpose tabular data
+- `ds reo [file] [rows] [cols]` - Reorder, repeat, or slice data by rows and columns
 - `ds index [filepath]` - Print lines indexed
 - `ds field_counts [file]` - Count fields in data
 - `ds inferfs [filepath]` - Infer field separator from data
@@ -116,7 +117,6 @@ These commands are wired up but their Python ports are incomplete. They are tagg
 
 - `ds diff_fields <file1> <file2> <op>` - Elementwise diff of two datasets
 - `ds fit` - Fit fielded data in columns with dynamic width
-- `ds reo` - Reorder, repeat, or slice data by rows and columns
 - `ds sortm` - Sort with inferred multi-char field separator
 - `ds inferh` - Infer if headers are present in a file (still AWK)
 - `ds cardinality <filepath>` - Calculate distinct values per field
