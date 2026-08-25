@@ -171,7 +171,7 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:ntype             |                    | —           | Shell-specific                               |
 | ds:path_elements     | `ds path_elements` | ✅          | Tab-separated dir / stem / suffix            |
 | ds:pipe_check        |                    | —           |                                              |
-| ds:pivot             | `ds pivot`         | WIP         | Undefined `prod()` in aggregate              |
+| ds:pivot             | `ds pivot`         | ✅          | Parity tests in `test_pivot.py`; `--gen-keys` forces header-pattern keys |
 | ds:plot              |                    | —           |                                              |
 | ds:pow               | `ds power`         | ✅          |                                              |
 | ds:prod              | `ds prod`          | STUB        |                                              |
@@ -191,7 +191,7 @@ Status key: ✅ = fully wired, WIP = wired with warning, STUB = wired but hidden
 | ds:src               |                    | —           | Shell-specific                               |
 | ds:srg               |                    | —           |                                              |
 | ds:stagger           | `ds stagger`       | ✅          | Dedicated parity-focused tests in `test_stagger.py` |
-| ds:subsep            | `ds subsep`        | STUB        | Core methods incomplete (`SetOFS` etc.); many parity tests skipped |
+| ds:subsep            | `ds subsep`        | ✅          | Two-pass port; `--apply-to-fields` / `--regex` / `--escape` options |
 | ds:substr            |                    | —           |                                              |
 | ds:test              | `ds test`          | ✅          | Quiet extended-regex check (stdin/string/file) |
 | ds:tmp               |                    | —           |                                              |

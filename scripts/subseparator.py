@@ -1,126 +1,177 @@
 import re
 import sys
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from scripts.utils import re_unescape
 
+# Characters that carry regex meaning; a pattern made up entirely of these is escaped
+# for literal matching, anything else is passed through as a regex.
+METACHARS = "\\.^$(){}[]|*+?"
+
+ERR_MISSING_PATTERN = "ERROR: subsep_pattern must be set"
+ERR_INVALID_FIELDS = "ERROR: No valid fields specified in apply_to_fields"
+
+
+def escape_preserve_regex(pattern: str) -> str:
+    """Escape ``pattern`` unless it carries regex syntax worth preserving."""
+    meta_count = sum(1 for c in pattern if c in METACHARS)
+    if meta_count == len(pattern):
+        return re.escape(pattern)
+    return pattern
+
 
 class SubseparatorFinder:
-    def __init__(self, subsep_pattern=None, nomatch_handler=r'\s+', debug=False, escape=False, apply_to_fields=None, OFS=None):
-        self.subsep_pattern = subsep_pattern
-        self.nomatch_handler = nomatch_handler
+    """Extend fields that share a common sub-separator into separate output fields.
+
+    Runs in two passes over the same rows: the first records, per field position, the
+    largest number of subfields seen and how many of those were empty; the second emits
+    every row padded out to that width, so a column that splits into three parts on one
+    row still occupies three output columns on rows where it does not split at all.
+    """
+
+    def __init__(self, subsep_pattern=None, nomatch_handler=" ", debug=False, escape=False,
+                 regex=False, apply_to_fields=None, OFS=" ", retain_pattern=False):
         self.debug = debug
         self.escape = escape
-        self.apply_to_fields = apply_to_fields
-        self.OFS = OFS
+        self.regex = regex
+        self.retain_pattern = retain_pattern
+        self.OFS = " " if OFS is None else OFS
 
-        if not self.subsep_pattern:
-            print("Variable subsep_pattern must be set")
+        if not subsep_pattern:
+            print(ERR_MISSING_PATTERN)
             sys.exit(1)
 
-        if not self.nomatch_handler:
-            if self.debug:
-                print(f"splitting lines on {self.subsep_pattern} with whitespace tiebreaker")
+        self.unescaped_pattern = re_unescape(subsep_pattern)
+        if regex:
+            self.subsep_pattern = subsep_pattern
+        elif escape:
+            self.subsep_pattern = re.escape(subsep_pattern)
         else:
-            if self.debug:
-                print(f"splitting lines on {self.subsep_pattern} with tiebreaker {self.nomatch_handler}")
-            if self.escape:
-                self.nomatch_handler = re.escape(self.nomatch_handler)
-            else:
-                self.nomatch_handler = re.escape(self.nomatch_handler)
+            self.subsep_pattern = escape_preserve_regex(subsep_pattern)
 
-        self.unescaped_pattern = re_unescape(self.subsep_pattern)
-        if self.escape:
-            self.subsep_pattern = re.escape(self.subsep_pattern)
+        if not nomatch_handler:
+            self.nomatch_handler = r"\s+"
+        elif regex:
+            self.nomatch_handler = nomatch_handler
+        elif escape:
+            self.nomatch_handler = re.escape(nomatch_handler)
         else:
-            self.subsep_pattern = re.escape(self.subsep_pattern)
+            self.nomatch_handler = escape_preserve_regex(nomatch_handler)
 
-        if self.apply_to_fields:
-            Fields = self.apply_to_fields.split(',')
-            len_af = len(Fields)
-            self.RelevantFields = {}
-            for f in range(len_af):
-                af = Fields[f]
-                if not re.match(r'^[0-9]+$', af):
-                    continue
-                self.RelevantFields[af] = 1
-
+        self.RelevantFields: Dict[int, int] = {}
+        if apply_to_fields:
+            for af in apply_to_fields.split(','):
+                if re.match(r'^[0-9]+$', af):
+                    self.RelevantFields[int(af)] = 1
             if len(self.RelevantFields) < 1:
+                print(ERR_INVALID_FIELDS)
                 sys.exit(1)
 
-        self.OFS = self.SetOFS()
+        self.max_subseps: Dict[int, int] = {}
+        self.subfield_shifts: Dict[int, int] = {}
 
-    def SetOFS(self):
-        pass
+    # -- splitting -------------------------------------------------------
 
-    def process_line(self, fields):
-        max_subseps = {}
-        subfield_shifts = {}
-        for f in fields:
-            subseparated_line = re.split(self.subsep_pattern, f)
-            num_subseps = len(subseparated_line)
+    def _split_subsep(self, field: str) -> List[str]:
+        return re.split(self.subsep_pattern, field)
 
-            if num_subseps > 1 and num_subseps > max_subseps.get(f, 0):
-                if self.debug:
-                    print("Debug: ", 3)
-                max_subseps[f] = num_subseps
+    def _split_nomatch(self, field: str) -> List[str]:
+        # A bare space means "split on whitespace runs, ignoring leading/trailing".
+        if self.nomatch_handler == " ":
+            return field.split()
+        return re.split(self.nomatch_handler, field)
 
-                for j in range(num_subseps):
-                    if not subseparated_line[j].strip():
-                        subfield_shifts[f] = subfield_shifts.get(f, 0) - 1
-
-        return max_subseps, subfield_shifts
-
-    def process_file(self, file_path):
-        with open(file_path, 'r') as file:
-            lines = file.readlines()
-
-        for line in lines:
-            fields = line.strip().split()
-            max_subseps, subfield_shifts = self.process_line(fields)
-
-        return max_subseps, subfield_shifts
-
-    def trim(self, text):
-        return text.strip()
-
-    def debug_print(self, level):
-        print(level)
-
-    def parse_file(self, file):
-        for line_number, line in enumerate(file, 1):
-            fields = line.split()
-            for field_index, field in enumerate(fields):
-                last_field = field_index == len(fields) - 1
-                shift = self.subfield_shifts[field_index]
-                n_outer_subfields = self.max_subseps[field_index] + shift
-                subfield_partitions = n_outer_subfields * 2 - 1 - shift
-
-                if subfield_partitions > 0:
-                    if self.debug: self.debug_print(1)
-                    subseparated_line = re.split(self.subsep_pattern, field)
-                    num_subseps = len(subseparated_line)
-                    k = 0
-
-                    for j in range(subfield_partitions):
-                        conditional_ofs = "" if last_field and j == subfield_partitions - 1 else " "
-                        outer_subfield = j % 2 + shift
-
-                        if outer_subfield: k += 1
-                        if self.debug and (self.retain_pattern or outer_subfield): self.debug_print(2)
-
-                        if num_subseps < n_outer_subfields - shift:
-                            handling_line = re.split(self.nomatch_handler, field)
-                            if outer_subfield:
-                                print(self.trim(handling_line[k-1]), end=conditional_ofs)
-                            elif self.retain_pattern:
-                                print("", end=conditional_ofs)
-                        else:
-                            if outer_subfield:
-                                print(self.trim(subseparated_line[k-shift-1]), end=conditional_ofs)
-                            elif self.retain_pattern:
-                                print(self.unescaped_pattern, end=" ")
-                    print()
+    @staticmethod
+    def read_rows(file_path: str, field_separator: Optional[str] = None) -> List[List[str]]:
+        """Split each line of ``file_path`` into fields on ``field_separator``/whitespace."""
+        rows: List[List[str]] = []
+        with open(file_path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.rstrip("\n").rstrip("\r")
+                if field_separator and field_separator.strip():
+                    rows.append(line.split(field_separator))
                 else:
-                    conditional_ofs = "" if last_field else " "
-                    print(self.trim(field), end=conditional_ofs)
-            print()
+                    rows.append(line.split())
+        return rows
+
+    # -- pass one --------------------------------------------------------
+
+    def analyze_rows(self, rows: Sequence[Sequence[str]]) -> Tuple[Dict[int, int], Dict[int, int]]:
+        """Record the widest split and the empty-subfield shift for each field position."""
+        for fields in rows:
+            if self.RelevantFields:
+                indices = sorted(self.RelevantFields)
+            else:
+                indices = range(1, len(fields) + 1)
+            for index in indices:
+                if index > len(fields):
+                    continue
+                parts = self._split_subsep(fields[index - 1])
+                num_subseps = len(parts)
+                if num_subseps > 1 and num_subseps > self.max_subseps.get(index, 0):
+                    self.max_subseps[index] = num_subseps
+                    for part in parts:
+                        if not part.strip():
+                            self.subfield_shifts[index] = self.subfield_shifts.get(index, 0) - 1
+        return self.max_subseps, self.subfield_shifts
+
+    # -- pass two --------------------------------------------------------
+
+    def _render_field(self, field: str, index: int, last_field: bool) -> str:
+        shift = self.subfield_shifts.get(index, 0)
+        n_subfields = self.max_subseps.get(index, 0) + shift
+        partitions = n_subfields * 2 - 1 - shift
+
+        if partitions <= 0:
+            return field.strip() + ("" if last_field else self.OFS)
+
+        parts = self._split_subsep(field)
+        num_subseps = len(parts)
+        handling: Optional[List[str]] = None
+        pieces: List[str] = []
+        k = 0
+
+        for j in range(1, partitions + 1):
+            conditional_ofs = "" if (last_field and j == partitions) else self.OFS
+            outer_subfield = j % 2 + shift
+            if outer_subfield:
+                k += 1
+
+            if num_subseps < n_subfields - shift:
+                if handling is None:
+                    handling = self._split_nomatch(field)
+                if outer_subfield:
+                    value = handling[k - 1] if 0 <= k - 1 < len(handling) else ""
+                    pieces.append(value.strip() + conditional_ofs)
+                elif self.retain_pattern:
+                    pieces.append(conditional_ofs)
+            else:
+                if outer_subfield:
+                    i = k - shift - 1
+                    value = parts[i] if 0 <= i < len(parts) else ""
+                    pieces.append(value.strip() + conditional_ofs)
+                elif self.retain_pattern:
+                    pieces.append(self.unescaped_pattern + self.OFS)
+
+        return "".join(pieces)
+
+    def transform_rows(self, rows: Sequence[Sequence[str]]) -> List[str]:
+        out: List[str] = []
+        for fields in rows:
+            nf = len(fields)
+            out.append("".join(
+                self._render_field(fields[i - 1], i, i == nf) for i in range(1, nf + 1)
+            ))
+        return out
+
+    # -- entry points ----------------------------------------------------
+
+    def process_file(self, file_path: str, field_separator: Optional[str] = None):
+        """Run the analysis pass only, returning ``(max_subseps, subfield_shifts)``."""
+        return self.analyze_rows(self.read_rows(file_path, field_separator))
+
+    def transform_file(self, file_path: str, field_separator: Optional[str] = None) -> List[str]:
+        """Run both passes over ``file_path`` and return the transformed lines."""
+        rows = self.read_rows(file_path, field_separator)
+        self.analyze_rows(rows)
+        return self.transform_rows(rows)

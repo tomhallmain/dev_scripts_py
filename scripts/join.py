@@ -118,6 +118,12 @@ class Join:
         self.S2 = defaultdict(list)
         self.SK1 = defaultdict(int)
         self.SK2 = defaultdict(int)
+        # S1/SK1/SK2 are all indexed by compound key (keybase + a dedup counter), so none of
+        # them can answer "how many stream 1 rows share this keybase" (always 1 per compound
+        # key) or "did this keybase match anything in stream 2". standard_join needs both.
+        self.KB1 = defaultdict(int)  # keybase -> count of stream 1 rows with that keybase
+        self.KeyBase1 = {}           # compound key -> the keybase it was built from
+        self.MatchedKB2 = set()      # keybases matched by at least one stream 2 row
     
 
         if verbose:
@@ -260,6 +266,8 @@ class Join:
                 key = f"{keybase}{keycount}"
 
             self.SK1[key] += 1
+            self.KB1[keybase] += 1
+            self.KeyBase1[key] = keybase
             Utils.debug_print(key, context="join")
             Utils.debug_print(self.SK1[key], context="join")
             self.S1[key] = line
@@ -295,11 +303,12 @@ class Join:
         # Print right joins and inner joins
         if key in self.SK1:
             self.SK2[key] += 1
+            self.MatchedKB2.add(keybase)
 
             if self.standard_join:
                 if self.run_inner:
                     self.record_count += 1
-                    stream1_keycount = self.SK1[key]    
+                    stream1_keycount = self.KB1[keybase]
                     for i in range(1, stream1_keycount + 1):
                         self.record_count += 1
                         if self.index:
@@ -346,15 +355,17 @@ class Join:
 
         record_count = 0
 
-        for compound_key in self.S1.keys():
+        # Sorted, not S1 insertion order: unmatched left rows are emitted in compound-key
+        # order so output stays deterministic regardless of how the rows arrived.
+        for compound_key in sorted(self.S1.keys()):
             if self.standard_join and self.run_inner:
-                base_key = compound_key[:-2]
-                if base_key in self.SK2:
+                keybase = self.KeyBase1[compound_key]
+                if keybase in self.MatchedKB2:
                     if Utils.DEBUG:
-                        Utils.debug_print(f"Found in both: {compound_key} - S1 {self.S1}, S2 {self.SK2}")
+                        Utils.debug_print(f"Found in both: {compound_key} - S1 {self.S1}, MatchedKB2 {self.MatchedKB2}")
                     continue
                 if Utils.DEBUG:
-                    Utils.debug_print(f"Not found in SK2: {base_key} - compound_key {compound_key}", context="join")
+                    Utils.debug_print(f"Not matched in stream 2: {keybase} - compound_key {compound_key}", context="join")
 
             record_count += 1
             if self.index:

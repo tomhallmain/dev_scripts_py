@@ -1,11 +1,8 @@
 """
 Pivot CLI and parity with ``dev_scripts/tests/t_pivot.sh``.
 
-The original repo's ``plot.awk`` implements ``ds:plot`` (terminal scatter plots), not pivot;
-pivot behavior is specified by ``t_pivot.sh`` and the awk pivot implementation it exercises.
-
-Until :mod:`scripts.pivot` matches that output format (``@@@``-delimited cells, etc.),
-parity tests are marked ``xfail`` so they document the contract without failing CI.
+Pivot behavior is specified by ``t_pivot.sh`` and the awk pivot implementation it exercises;
+expected strings below are copied from those shell goldens.
 """
 from __future__ import annotations
 
@@ -58,10 +55,6 @@ def test_pivot_cli_optional_file(runner: CliRunner, tmp_path: Path) -> None:
 # --- dev_scripts/tests/t_pivot.sh (expected strings verbatim) ---
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason="scripts.pivot.Pivot output not yet aligned with awk reference (t_pivot.sh).",
-)
 class TestTPivotShParity:
     """Expected output copied from ``dev_scripts/tests/t_pivot.sh``."""
 
@@ -122,10 +115,15 @@ class TestTPivotShParity:
         assert _normalize_cli_out(r.output) == expected
 
     def test_gen_keys_error_message(self, runner: CliRunner) -> None:
+        """``--gen-keys`` forces numeric keys to be read as header patterns, which match nothing here.
+
+        The shell case passed ``-v gen_keys=1``; without that flag this is just
+        :meth:`test_multiple_y_keys` and cannot also produce an error.
+        """
         expected = "Fields not found for both x and y dimensions with given key params"
         r = runner.invoke(
             cli,
-            [".", "pivot", "-y", "1,2", "-x", "4", "-z", "3"],
+            [".", "pivot", "-y", "1,2", "-x", "4", "-z", "3", "--gen-keys"],
             input="a b c d\n1 2 3 4\n",
             catch_exceptions=False,
         )

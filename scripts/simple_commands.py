@@ -15,6 +15,7 @@ from scripts.cli_arg_parse_utils import (
     parse_non_negative_int_arg,
 )
 from scripts.DataFile import DataFile
+from scripts.utils import Utils
 
 # ``ds:todo`` / ``ds . todo`` (same regex as the original bash helper).
 TODO_SEARCH_PATTERN = r"(TODO|FIXME|(^|[^X])XXX)( |:|\-)"
@@ -62,7 +63,7 @@ def filename_str_cmd(filepath: str, add: str, position: str = "append", abs_path
     Add ``add`` to a filename while preserving extension and (optionally) path.
     """
     dirpath, filename, extension = path_elements_parts(filepath)
-    if not os.path.isdir(dirpath):
+    if not Utils.isdir_with_retry(dirpath):
         raise click.ClickException("Filepath given is invalid")
     path_prefix = "" if dirpath == "./" else dirpath
     include_path = bool(abs_path) and bool(
@@ -122,7 +123,7 @@ def dostounix_cmd(
         raise click.ClickException("dostounix requires at least one FILE or piped stdin")
 
     for fp in files:
-        if not os.path.isfile(fp):
+        if not Utils.isfile_with_retry(fp):
             raise click.ClickException(f"path provided is not a file: {fp}")
         echo(f"Removing CR line endings in {fp}")
         with open(fp, "r", encoding="utf-8", errors="replace", newline="") as f:
@@ -145,7 +146,7 @@ def newfs_cmd(
     """
     echo = echo or click.echo
     piped = stdin_data is not None and not (
-        stdin_data == "" and len(args) >= 1 and os.path.isfile(args[0])
+        stdin_data == "" and len(args) >= 1 and Utils.isfile_with_retry(args[0])
     )
 
     if piped:
@@ -164,7 +165,7 @@ def newfs_cmd(
         if len(args) == 0:
             raise click.ClickException("newfs requires a FILE when stdin is a TTY")
         file_path = args[0]
-        if not os.path.isfile(file_path):
+        if not Utils.isfile_with_retry(file_path):
             raise click.ClickException(f"path provided is not a file: {file_path}")
         newfs = args[1] if len(args) >= 2 else ","
         if len(args) > 2:
@@ -211,7 +212,7 @@ def parse_decap(ctx: CliArgContext) -> Tuple[DataFile, int]:
             args[1] if len(args) > 1 else None,
             descriptor="n_lines",
         )
-    elif stdin_text == "" and args and os.path.isfile(args[0]):
+    elif stdin_text == "" and args and Utils.isfile_with_retry(args[0]):
         apply_arg_predicates(ctx, DECAP_CHECKS_EMPTY_STDIN_FILE)
         n_remove = parse_non_negative_int_arg(
             args[1] if len(args) > 1 else None,
@@ -298,14 +299,14 @@ def _read_insert_source(source: Optional[str], stdin_data: Optional[str]) -> str
         return stdin_data
     if source is None:
         raise click.ClickException("Insertion source not provided.")
-    if os.path.isfile(source):
+    if Utils.isfile_with_retry(source):
         with open(source, "r", encoding="utf-8") as f:
             return f.read()
     return source
 
 
 def insert_cmd(sink: str, where: str, source: Optional[str], inplace: str, stdin_data: Optional[str]):
-    if not os.path.isfile(sink):
+    if not Utils.isfile_with_retry(sink):
         raise click.ClickException(f'File "{sink}" not provided or invalid')
     insert_data = _read_insert_source(source, stdin_data)
     with open(sink, "r", encoding="utf-8") as f:

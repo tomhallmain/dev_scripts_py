@@ -61,11 +61,11 @@ class FileMover:
         self.copy_mode = copy_mode
         
         # Validate source exists
-        if not os.path.exists(self.source):
+        if not Utils.exists_with_retry(self.source):
             raise Exception(f"Source path does not exist: {self.source}")
-        
-        self.source_is_dir = os.path.isdir(self.source)
-        self.target_is_dir = os.path.isdir(self.target) if os.path.exists(self.target) else None
+
+        self.source_is_dir = Utils.isdir_with_retry(self.source)
+        self.target_is_dir = Utils.isdir_with_retry(self.target) if Utils.exists_with_retry(self.target) else None
         self._source_norm = os.path.normcase(self.source)
         self._target_norm = os.path.normcase(self.target)
         self._source_equals_target_dir = (
@@ -204,15 +204,18 @@ class FileMover:
             Target path for the file
         """
         filename = os.path.basename(source_file)
-        
-        # Check if target exists and is a directory (check dynamically in case it was created)
+
+        # Check if target exists and is a directory (check dynamically in case it was created).
+        # Plain checks: this runs once per file being moved, and the target's drive was already
+        # woken by the one-time checks in __init__/run() -- retrying here per-file would multiply
+        # a single cold-drive delay across every file in the batch instead of paying it once.
         if os.path.exists(self.target) and os.path.isdir(self.target):
             return os.path.join(self.target, filename)
-        
+
         # If source is a single file, target is the new file path
         if not self.source_is_dir:
             return self.target
-        
+
         # If target doesn't exist, preserve relative path structure (target will be created as directory)
         if not os.path.exists(self.target):
             # Preserve directory structure relative to source
@@ -305,7 +308,7 @@ class FileMover:
             return True
         
         # If target doesn't exist and we're moving a directory, create target directory
-        if self.source_is_dir and not os.path.exists(self.target):
+        if self.source_is_dir and not Utils.exists_with_retry(self.target):
             if not dry_run:
                 os.makedirs(self.target, exist_ok=True)
             print(f"Target directory created: {self.target}")
@@ -321,7 +324,8 @@ class FileMover:
                 skipped_same_path_count += 1
                 continue
             
-            # Create target directory if needed
+            # Create target directory if needed. Plain check: runs per file, and the target's
+            # drive was already woken above -- see the note in _determine_target_path.
             target_dir = os.path.dirname(target_path)
             if target_dir and not os.path.exists(target_dir):
                 if not dry_run:

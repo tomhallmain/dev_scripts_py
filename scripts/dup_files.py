@@ -18,7 +18,7 @@ class DuplicateRemover:
                  save_filedata=False, no_overwrite_filedata=True):
         # Strip any trailing quotes from the path
         self.source_folder = os.path.abspath(source_folder.rstrip('"'))
-        if not os.path.isdir(self.source_folder):
+        if not Utils.isdir_with_retry(self.source_folder):
             raise Exception("Invalid source folder provided: " + self.source_folder)
 #        print(self.source_folder)
         self.file_dict, self.is_stored_filedata = self._load_file_data()
@@ -39,7 +39,7 @@ class DuplicateRemover:
                     full_path = d
                 else:
                     full_path = os.path.join(os.path.abspath(self.source_folder), d)
-                if not os.path.isdir(full_path):
+                if not Utils.isdir_with_retry(full_path):
                     raise Exception("Invalid exclude directory: " + d)
                 print(full_path)
                 self.exclude_dirs.append(full_path)
@@ -50,7 +50,7 @@ class DuplicateRemover:
                     full_path = d
                 else:
                     full_path = os.path.join(os.path.abspath(self.source_folder), d)
-                if not os.path.isdir(full_path):
+                if not Utils.isdir_with_retry(full_path):
                     raise Exception("Invalid preferred delete directory: " + d)
                 print(full_path)
                 self.preferred_delete_dirs.append(full_path)

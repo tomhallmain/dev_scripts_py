@@ -6,10 +6,6 @@ import datetime
 import sys
 from typing import Optional, Tuple
 
-if sys.platform == "win32":
-    import win32file
-    import pywintypes
-
 
 class SafeFileOps:
     """Provides atomic file operations with verification for backup operations"""
@@ -29,6 +25,8 @@ class SafeFileOps:
     @staticmethod
     def verify_files_match(source_path: str, target_path: str) -> bool:
         """Verify that two files have identical content using SHA256"""
+        # Plain check: SafeFileOps is only invoked per-file from move.py's batch loop, and the
+        # source/target drives were already woken by move.py's one-time checks before the loop.
         if not (os.path.exists(source_path) and os.path.exists(target_path)):
             return False
             
@@ -50,6 +48,7 @@ class SafeFileOps:
         Returns:
             Tuple of (success, error_message)
         """
+        # Plain check: called per-file from move.py's batch loop -- see verify_files_match.
         if not os.path.exists(source_path):
             return False, f"Source file does not exist: {source_path}"
             
@@ -189,6 +188,11 @@ class SafeFileOps:
 
         if sys.platform == "win32":
             try:
+                # Imported here, not at module load, so importing this module doesn't require
+                # pywin32 on Windows unless this Windows-only creation-time path actually runs.
+                import win32file
+                import pywintypes
+
                 # Open file with proper access for Windows API
                 handle = win32file.CreateFile(
                     path,

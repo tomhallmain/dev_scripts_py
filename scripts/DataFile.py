@@ -62,7 +62,7 @@ class DataFile:
             if not path_candidate:
                 raise Exception("file path required when stdin is a TTY")
             df = DataFile(path_candidate, field_separator)
-        elif stdin_text == "" and path_candidate and os.path.isfile(path_candidate):
+        elif stdin_text == "" and path_candidate and Utils.isfile_with_retry(path_candidate):
             df = DataFile(path_candidate, field_separator)
         else:
             df = DataFile(None, field_separator, stdin_text=stdin_text)
@@ -72,7 +72,7 @@ class DataFile:
 
     def check_and_setup(self):
         if not self.is_stdin:
-            if not os.path.isfile(self.file_path):
+            if not Utils.isfile_with_retry(self.file_path):
                 raise Exception("path provided is not a file: " + self.file_path)
             with self.read() as f:
                 for line in f:

@@ -3,7 +3,6 @@ Generic CLI helpers: :class:`CliArgContext`, predicate checks, and optional int 
 """
 from __future__ import annotations
 
-import os
 import re
 import sys
 from dataclasses import InitVar, dataclass, field
@@ -57,7 +56,7 @@ def _resolved_path_tested_first_arg(args: Tuple[str, ...]) -> Optional[str]:
         resolved = Utils.resolve_relative_path(raw)
     except Exception:
         return None
-    if os.path.isfile(resolved):
+    if Utils.isfile_with_retry(resolved):
         return resolved
     return None
 
@@ -70,7 +69,7 @@ def _resolve_if_existing_file(raw: str) -> Optional[str]:
         resolved = Utils.resolve_relative_path(raw)
     except Exception:
         return None
-    if os.path.isfile(resolved):
+    if Utils.isfile_with_retry(resolved):
         return resolved
     return None
 
@@ -505,7 +504,7 @@ def regex_test_match(
     if stdin_text is not None and stdin_text != "":
         return rx.search(stdin_text) is not None
 
-    if "t" in (test_file_flag or "").lower() and value_or_file and os.path.isfile(value_or_file):
+    if "t" in (test_file_flag or "").lower() and value_or_file and Utils.isfile_with_retry(value_or_file):
         try:
             with open(value_or_file, encoding="utf-8", errors="replace") as f:
                 body = f.read()

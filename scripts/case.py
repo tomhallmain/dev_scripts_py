@@ -15,8 +15,8 @@ class TextCaseConverter:
             self.process_line(line)
 
     def prepare_line(self, line):
-        line = re.sub('_', ' ', line)
-        line = re.sub('\\.', ' ', line)
+        # _ . / and - are all word separators, so "a.b-c_d/e" recases as five words.
+        line = re.sub(r'[_./-]', ' ', line)
         line = re.sub(' +', ' ', line)
         return self.space_case_vars(line)
 

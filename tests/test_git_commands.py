@@ -187,3 +187,55 @@ def test_git_cross_view_then_git_purge_local_sequence(
     branches_b = _git(repo_b, "branch", "--list").stdout
     assert "old-feature" not in branches_a
     assert "old-feature" not in branches_b
+
+
+def test_git_time_stat_reports_no_pull_on_local_only_repo(
+    runner: CliRunner, tmp_path: Path, monkeypatch
+) -> None:
+    """A freshly-init'd repo has never fetched, so there is no FETCH_HEAD to report."""
+    repo = tmp_path / "repo_time_stat"
+    _init_repo(repo)
+    monkeypatch.chdir(repo)
+
+    r = runner.invoke(cli, [".", "git_time_stat"], catch_exceptions=False)
+    assert r.exit_code == 0
+    assert "No pulls found" in r.output
+    assert "Time of last local change:" in r.output
+    assert "Time of last commit found locally:" in r.output
+
+
+def test_git_word_diff_shows_unstaged_change(
+    runner: CliRunner, tmp_path: Path, monkeypatch
+) -> None:
+    repo = tmp_path / "repo_word_diff"
+    _init_repo(repo)
+    (repo / "a.txt").write_text("alpha beta\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+
+    r = runner.invoke(cli, [".", "git_word_diff"], catch_exceptions=False)
+    assert r.exit_code == 0
+    assert "a.txt" in r.output
+
+
+def test_git_word_diff_clean_tree_prints_nothing(
+    runner: CliRunner, tmp_path: Path, monkeypatch
+) -> None:
+    repo = tmp_path / "repo_word_diff_clean"
+    _init_repo(repo)
+    monkeypatch.chdir(repo)
+
+    r = runner.invoke(cli, [".", "git_word_diff"], catch_exceptions=False)
+    assert r.exit_code == 0
+    assert r.output.strip() == ""
+
+
+def test_git_graph_lists_commit_subjects(
+    runner: CliRunner, tmp_path: Path, monkeypatch
+) -> None:
+    repo = tmp_path / "repo_graph"
+    _init_repo(repo)
+    monkeypatch.chdir(repo)
+
+    r = runner.invoke(cli, [".", "git_graph"], catch_exceptions=False)
+    assert r.exit_code == 0
+    assert "initial" in r.output

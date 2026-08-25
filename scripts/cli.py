@@ -1035,8 +1035,9 @@ def stagger(args, stag_size, field_sep, tty_size, style, wrap, numbers, align, m
 @click.option('--z-keys', '-z', default=None, help="Comma-separated z-axis value fields")
 @click.option('--agg-type', '-a', default=None, type=click.Choice(['count', 'sum', 'product', 'mean']),
               help="Aggregation type")
-@wip
-def pivot(args, y_keys, x_keys, z_keys, agg_type):
+@click.option('--gen-keys', '-g', is_flag=True,
+              help="Treat all keys as header-name patterns, even numeric ones")
+def pivot(args, y_keys, x_keys, z_keys, agg_type, gen_keys):
     """
     Pivot tabular data: optional ``FILE`` or stdin (relative paths resolved).
 
@@ -1053,8 +1054,13 @@ def pivot(args, y_keys, x_keys, z_keys, agg_type):
         extra_arg_warn=EXTRA_ARG_WARN_FIRST_FILE_ONLY,
     )
     data_file = ctx.to_data_file()
-    p = Pivot(data_file.file_path, y_keys, x_keys, z_keys=z_keys, agg_type=agg_type)
-    p.data = load_pivot_rows(data_file.file_path)
+    try:
+        field_sep = data_file.get_field_separator()
+    except Exception:
+        field_sep = None
+    p = Pivot(data_file.file_path, y_keys, x_keys, z_keys=z_keys, agg_type=agg_type,
+              gen_keys=gen_keys)
+    p.data = load_pivot_rows(data_file.file_path, field_sep)
     p.pivot()
     p.print_pivot()
 
@@ -1126,9 +1132,12 @@ def sortm():
 
 @cli.command(name="subsep")
 @click.argument("args", nargs=-1, required=True)
-@click.option('--nomatch-handler', '-n', default=r'\s+', help="Fallback split pattern for non-matching lines")
-@stub
-def subsep(args, nomatch_handler):
+@click.option('--nomatch-handler', '-n', default=" ", help="Fallback split pattern for non-matching lines")
+@click.option('--apply-to-fields', default=None, help="Comma-separated field indices to subseparate")
+@click.option('--regex', is_flag=True, help="Treat the pattern as a regex rather than a literal")
+@click.option('--escape', is_flag=True, help="Escape the pattern for literal matching")
+@click.option('--retain-pattern', is_flag=True, help="Keep the subseparator between output fields")
+def subsep(args, nomatch_handler, apply_to_fields, regex, escape, retain_pattern):
     """
     Extend fields by a common sub-separator.
 
@@ -1147,9 +1156,22 @@ def subsep(args, nomatch_handler):
         ),
     )
     subsep_pattern = ctx.shifted_arg(0)
-    finder = SubseparatorFinder(subsep_pattern=subsep_pattern, nomatch_handler=nomatch_handler)
     df = ctx.to_data_file()
-    finder.process_file(df.file_path)
+    try:
+        field_sep = df.get_field_separator()
+    except Exception:
+        field_sep = None
+    finder = SubseparatorFinder(
+        subsep_pattern=subsep_pattern,
+        nomatch_handler=nomatch_handler,
+        apply_to_fields=apply_to_fields,
+        regex=regex,
+        escape=escape,
+        retain_pattern=retain_pattern,
+        OFS=field_sep or " ",
+    )
+    for line in finder.transform_file(df.file_path, field_sep):
+        click.echo(line)
 
 
 @cli.command(name="inferh")

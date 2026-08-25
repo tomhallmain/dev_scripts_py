@@ -1,6 +1,7 @@
 # Runtime deps (install from project docs / environment as needed)
 click
 termcolor
+pywin32; sys_platform == "win32"
 
 # Tests
 pytest>=7.0

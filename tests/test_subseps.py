@@ -3,9 +3,9 @@ Subseparator (`ds subsep` / `ds:subsep`) tests.
 
 Mirrors cases from dev_scripts/tests/t_subsep.sh where they apply to this repo’s
 Python implementation. Several shell tests pipe through ``ds:reo`` or use AWK-style
-flags (``-F``, ``-v apply_to_fields=…``, ``regex=1``, ``escape=1``); those are
-recorded as expected-output contracts and skipped until ``scripts/subseparator.py``
-and the CLI match that behavior.
+flags (``-v apply_to_fields=…``, ``regex=1``, ``escape=1``); those map onto the
+``--apply-to-fields`` / ``--regex`` / ``--escape`` options here. Cases the shell piped
+through ``ds:reo`` build the equivalent slice inline, since ``reo`` is not ported.
 
 Additional checks use ``tests/data/seps_test_base`` and ``tests/data/seps_test_sorted``
 (paired datasets for separator / ordering scenarios; expanded beyond the original
@@ -13,6 +13,7 @@ script’s file set).
 """
 from __future__ import annotations
 
+import csv
 import os
 from pathlib import Path
 
@@ -248,70 +249,77 @@ def test_process_file_runs_on_minimal_file(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Parity with t_subsep.sh — full pipeline not yet implemented in Python
+# Parity with t_subsep.sh
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(
-    reason="Python subsep does not emit transformed lines (no reo); "
-    "see scripts/subseparator.SubseparatorFinder.process_file / parse_file."
-)
-def test_basic_subsep_matches_t_subsep_reo_columns_1_and_7() -> None:
-    """t_subsep.sh L12–16."""
-    assert T_SUBSEP_BASIC_REO_1_7  # documented contract
+def _subsep_out(cli_runner: CliRunner, argv: list, **kwargs) -> str:
+    result = cli_runner.invoke(cli, [".", "subsep", *argv], catch_exceptions=False, **kwargs)
+    assert result.exit_code == 0, result.output
+    return result.output.strip("\n")
 
 
-@pytest.mark.skip(
-    reason="Requires CSV field separator, reo slice, and subsep OFS parity with shell."
-)
-def test_readme_csv_slash_case_matches_t_subsep() -> None:
-    """t_subsep.sh L18–25."""
-    assert T_SUBSEP_README_CSV
+def test_basic_subsep_matches_t_subsep_reo_columns_1_and_7(cli_runner: CliRunner) -> None:
+    """t_subsep.sh L12-16. The shell piped through ``ds:reo 1,7``; rows are sliced here."""
+    out = _subsep_out(cli_runner, [str(SUBSEPS_TEST), "SEP"]).splitlines()
+    assert "\n".join([out[0], out[6]]) == T_SUBSEP_BASIC_REO_1_7
 
 
-@pytest.mark.skip(
-    reason="Requires apply_to_fields and -F, (comma OFS) parity with shell."
-)
-def test_selective_fields_csv_matches_t_subsep() -> None:
-    """t_subsep.sh L27–32."""
-    assert T_SUBSEP_SELECTIVE_FIELDS_CSV
+def test_readme_csv_slash_case_matches_t_subsep(cli_runner: CliRunner, tmp_path: Path) -> None:
+    """t_subsep.sh L18-25. The shell prefixed ``ds:reo 1..5 1,2``; the slice is built here."""
+    rows = list(csv.reader(TESTCRIME_CSV.open(encoding="utf-8")))[:5]
+    sliced = tmp_path / "crime_slice.csv"
+    sliced.write_text("\n".join(",".join(r[:2]) for r in rows) + "\n", encoding="utf-8")
+    assert _subsep_out(cli_runner, [str(sliced), "/"]) == T_SUBSEP_README_CSV
 
 
-@pytest.mark.skip(
-    reason="Shell output parity (reo/OFS) not implemented; stdin+pattern is wired in CLI."
-)
-def test_piped_slash_field_splitting_matches_t_subsep() -> None:
-    """t_subsep.sh L34–37."""
-    assert T_SUBSEP_PIPE_SLASH == "a b c d"
+def test_selective_fields_csv_matches_t_subsep(cli_runner: CliRunner, tmp_path: Path) -> None:
+    """t_subsep.sh L27-32: only fields 1 and 3 are subseparated; the comma OFS is kept."""
+    p = tmp_path / "selective.csv"
+    p.write_text("a:b,c:d,e:f\n1:2,3:4,5:6\n", encoding="utf-8")
+    out = _subsep_out(cli_runner, [str(p), ":", "--apply-to-fields", "1,3"])
+    assert out == T_SUBSEP_SELECTIVE_FIELDS_CSV
 
 
-@pytest.mark.skip(reason="Empty subfield preservation not covered by process_file output.")
-def test_empty_subfield_passthrough_matches_t_subsep() -> None:
-    """t_subsep.sh L39–44."""
-    assert T_SUBSEP_EMPTY_SUBFIELD
+def test_piped_slash_field_splitting_matches_t_subsep(cli_runner: CliRunner) -> None:
+    """t_subsep.sh L34-37."""
+    assert _subsep_out(cli_runner, ["/"], input="a/b c/d\n") == T_SUBSEP_PIPE_SLASH
 
 
-@pytest.mark.skip(reason="regex=1 and nomatch handler splitting not exposed in CLI.")
-def test_regex_brackets_matches_t_subsep() -> None:
-    """t_subsep.sh L46–51."""
-    assert T_SUBSEP_REGEX_BRACKETS
+def test_empty_subfield_passthrough_matches_t_subsep(cli_runner: CliRunner, tmp_path: Path) -> None:
+    """t_subsep.sh L39-44: ``:`` is the inferred field separator, so nothing is subseparated."""
+    p = tmp_path / "empty_subfield.txt"
+    p.write_text("a::b:c\nd::e:f\n", encoding="utf-8")
+    assert _subsep_out(cli_runner, [str(p), ":"]) == T_SUBSEP_EMPTY_SUBFIELD
 
 
-@pytest.mark.skip(reason="escape=1 flag not exposed in Python CLI.")
-def test_escaped_dot_pattern_matches_t_subsep() -> None:
-    """t_subsep.sh L53–58."""
-    assert T_SUBSEP_ESCAPED_DOT
+def test_regex_brackets_matches_t_subsep(cli_runner: CliRunner, tmp_path: Path) -> None:
+    """t_subsep.sh L46-51: ``--regex`` keeps the alternation instead of escaping it."""
+    p = tmp_path / "brackets.txt"
+    p.write_text("a[1]b[2]c\nd[3]e[4]f\n", encoding="utf-8")
+    out = _subsep_out(cli_runner, [str(p), r"\[|\]", "--regex"])
+    assert out == T_SUBSEP_REGEX_BRACKETS
 
 
-def test_stderr_contract_invalid_apply_to_fields_documented() -> None:
-    """Shell prints a clear ERROR string; Python currently exits without that message."""
-    assert T_SUBSEP_ERR_INVALID_FIELDS  # contract for future parity
+def test_escaped_dot_pattern_matches_t_subsep(cli_runner: CliRunner, tmp_path: Path) -> None:
+    """t_subsep.sh L53-58."""
+    p = tmp_path / "dots.txt"
+    p.write_text("a.b.c\nd.e.f\n", encoding="utf-8")
+    assert _subsep_out(cli_runner, [str(p), ".", "--escape"]) == T_SUBSEP_ESCAPED_DOT
 
 
-def test_stderr_contract_missing_pattern_documented() -> None:
-    """Shell message differs slightly from Python ``Variable subsep_pattern must be set``."""
-    assert T_SUBSEP_ERR_MISSING_PATTERN
-    # When aligning messages, map Python print to shell ERROR text.
+def test_stderr_contract_invalid_apply_to_fields_documented(capsys) -> None:
+    """t_subsep.sh L60-64: the shell ERROR text is printed before exiting."""
+    with pytest.raises(SystemExit):
+        SubseparatorFinder(subsep_pattern=":", nomatch_handler="", apply_to_fields="abc")
+    assert T_SUBSEP_ERR_INVALID_FIELDS in capsys.readouterr().out
+
+
+def test_stderr_contract_missing_pattern_documented(capsys) -> None:
+    """t_subsep.sh L66-70: the shell ERROR text is printed before exiting."""
+    with pytest.raises(SystemExit):
+        SubseparatorFinder(subsep_pattern="", nomatch_handler=r"\s+")
+    assert T_SUBSEP_ERR_MISSING_PATTERN in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------------------

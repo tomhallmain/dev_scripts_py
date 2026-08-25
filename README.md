@@ -76,6 +76,7 @@ ds <command> --help
 - `ds index [filepath]` - Print lines indexed
 - `ds field_counts [file]` - Count fields in data
 - `ds inferfs [filepath]` - Infer field separator from data
+- `ds subsep <filepath> <pattern>` - Extend fields by a common sub-separator
 - `ds case <tocase> [text]` - Convert text case
 - `ds matches <file1> <file2> [--key] [--fs]` - Get matching records between two files
 - `ds power <file> [--min] [--choose]` - Combinatorial frequency analysis of field values
@@ -117,7 +118,6 @@ These commands are wired up but their Python ports are incomplete. They are tagg
 - `ds fit` - Fit fielded data in columns with dynamic width
 - `ds reo` - Reorder, repeat, or slice data by rows and columns
 - `ds sortm` - Sort with inferred multi-char field separator
-- `ds subsep <filepath> <pattern>` - Extend fields by a common sub-separator
 - `ds inferh` - Infer if headers are present in a file (still AWK)
 - `ds cardinality <filepath>` - Calculate distinct values per field
 - `ds prod <files...>` - Cartesian product of lines from multiple files
