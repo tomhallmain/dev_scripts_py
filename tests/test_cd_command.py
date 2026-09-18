@@ -20,8 +20,9 @@ def test_cd_without_search_prints_home(
     monkeypatch.setenv("USERPROFILE", "/tmp/ds-home")
     result = runner.invoke(cli, [".", "cd"], catch_exceptions=False)
     assert result.exit_code == 0
-    expected = str(Path("/tmp/ds-home").expanduser().resolve())
-    assert result.output.strip() == expected
+    # cd_cmd normalizes without resolving symlinks, so that `cd "$(ds . cd)"` lands on
+    # the logical path. Resolving here would expect /private/tmp/ds-home on macOS.
+    assert result.output.strip() == "/tmp/ds-home"
 
 
 def test_cd_direct_directory_prints_absolute_path(tmp_path: Path, runner: CliRunner) -> None:

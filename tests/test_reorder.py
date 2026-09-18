@@ -63,6 +63,18 @@ def test_compound_range_reorder_case(runner: CliRunner, tmp_path: Path) -> None:
     assert _reo(runner, [p, "4,1", "5,3..1,4"]) == "a c d e b\nf a c d b"
 
 
+def test_explicit_separator_matches_inferred(runner: CliRunner, tmp_path: Path) -> None:
+    """t_reorder.sh L28: naming the separator gives the same result as inferring it.
+
+    The shell passed a POSIX class (``FS="[[:space:]]"``); ``--field-sep`` here splits on a
+    literal string, so the equivalent single-space form is used.
+    """
+    p = _write(tmp_path, "letters.txt", LETTERS)
+    inferred = _reo(runner, [p, "4,1", "5,3..1,4"])
+    explicit = _reo(runner, [p, "4,1", "5,3..1,4", "--field-sep", " "])
+    assert explicit == inferred == "a c d e b\nf a c d b"
+
+
 def test_compound_range_row_selection(runner: CliRunner, tmp_path: Path) -> None:
     """t_reorder_extended.sh L98-107: ``1,2,5..3`` keeps written order, not source order."""
     text = "\n".join(f"row{i}" for i in range(1, 6)) + "\n"
@@ -213,7 +225,32 @@ def test_len_of_scoped_field(runner: CliRunner, tmp_path: Path) -> None:
     """t_reorder.sh L87-92: ``len(4)`` measures field 4 of each row."""
     lines = [ln.rstrip("\n") for ln in COMMANDS.open(encoding="utf-8") if "ds:" in ln]
     p = _write(tmp_path, "commands.txt", "\n".join(lines) + "\n")
-    assert _reo(runner, [p, "len(4)>46", "2"]) == "ds:dups\nds:insert\nds:jira\nds:path_elements"
+    assert _reo(runner, [p, "len(4)>46", "2"]) == (
+        "ds:copy\nds:dups\nds:insert\nds:jira\nds:kill_port\nds:move\nds:path_elements"
+    )
+
+
+@pytest.mark.xfail(
+    reason="len(2)%11 is read as len(2)=0 -- parse_token's len branch in scripts/reorder.py "
+    "drops the arithmetic tail when no comparator follows, and _matches_value ignores "
+    "token.arith for measure='len'. The column argument also selects one field fewer "
+    "than the shell.",
+    strict=False,
+)
+def test_len_modulo_and_column_side_logic(runner: CliRunner, tmp_path: Path) -> None:
+    """t_reorder.sh L98-106: ``length()`` as the long form of ``len()``, modulo inside a
+    len expression, and ``&&``/``||`` in the *column* argument rather than the row one.
+
+    ``len(2)%11`` means "field 2's length is divisible by 11"; the row set is that union
+    with ``len(2)=13``, which over this fixture is ds:commands, ds:git_branch, ds:git_diff,
+    ds:git_recent, ds:git_squash, ds:git_status and ds:pipe_check -- the seven rows the
+    shell prints, three of which have an empty alias and so render as a bare separator.
+    """
+    lines = [ln.rstrip("\n") for ln in COMMANDS.open(encoding="utf-8") if "ds:" in ln]
+    p = _write(tmp_path, "commands.txt", "\n".join(lines) + "\n")
+    assert _reo(runner, [p, "len(2)%11 || len(2)=13", "length()<5 && len()>2"]) == (
+        "@@@\nds:gb@@@\n@@@\nds:gr@@@\nds:gsq@@@\nds:gs@@@\n@@@"
+    )
 
 
 # --- anchored ranges --------------------------------------------------------

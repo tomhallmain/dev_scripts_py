@@ -7,15 +7,16 @@
 **@@@ds:color@@@@@@Get RGB from hex or hex from RGB@@@ds:color [hex|rgb|r] [g] [b]
 @@@ds:commands@@@@@@List dev_scripts commands@@@ds:commands [bufferchar] [utils] [re_source]
 **@@@ds:comps@@@@@@Get non-matching lines from two datasets@@@ds:comps file [file] [awkargs]
+@@@ds:copy@@@@@@Copy files/dirs, optionally filtered by [tag] or glob@@@ds:copy source target [filter]
 **@@@ds:cp@@@@@@Copy standard input in UTF-8@@@data | ds:cp
 **@@@ds:decap@@@@@@Remove up to n_lines from the start of a file@@@ds:decap [file] [n_lines=1]
 @@@ds:deps@@@@@@Identify dependencies of a shell function@@@ds:deps name [filter] [ntype=FUNC|ALIAS] [caller] [ndata]
 @@@ds:deps2@@@@@@Identify dependencies of C, Java functions@@@ds:deps2 file
-**@@@ds:diff@@@@@@Diff shortcut for an easier to read view@@@ds:diff file1 [file2] [suppress_common] [color=t]
+**@@@ds:diff@@@@@@Diff shortcut for an easier to read view@@@ds:diff file1|str1 [file2|str2] [suppress_common] [color=t]
 **@@@ds:diff_fields@@@ds:df@@@Get elementwise diff of two datasets@@@ds:df file [file*] [op=-] [exc_fields=0] [prefield=f] [awkargs]
 **@@@ds:dostounix@@@@@@Remove ^M / CR characters in place@@@ds:dostounix [file*]
 **@@@ds:dup_input@@@@@@Duplicate standard input in aggregate@@@data | ds:dup_input
-@@@ds:dups@@@@@@Report duplicate files with option for deletion@@@ds:dups [dir] [confirm=f] [of_file] [try_nonmatch_ext=f]
+@@@ds:dups@@@@@@Report duplicate files with option for deletion@@@ds:dups [dir] [confirm=f] [of_file] [try_nonmatch_ext=f] [strip_meta=f]
 **@@@ds:embrace@@@@@@Enclose a string on each side by args@@@ds:embrace [str] [left={] [right=}]
 @@@ds:enti@@@@@@Print text entities separated by pattern@@@ds:enti [file] [sep= ] [min=1] [order=a]
 @@@ds:fail@@@@@@Safe failure that kills parent@@@ds:fail [error_message]
@@ -34,7 +35,7 @@
 @@@ds:git_graph@@@ds:gg@@@Print colorful git history graph@@@ds:gg
 @@@ds:git_purge_local@@@ds:gpl@@@Purge branches from local git repos@@@ds:gpl [repos_dir=~]
 @@@ds:git_recent@@@ds:gr@@@Display commits sorted by recency@@@ds:gr [refs=heads] [run_context=display]
-@@@ds:git_recent_all@@@ds:gra@@@Display recent commits for local repos@@@ds:gra [refs=heads] [repos_dir=~]
+@@@ds:git_recent_all@@@ds:gra@@@Display recent commits for local repos@@@ds:gra [refs=heads] [repos_dir=dirname of $DS_LOC]
 @@@ds:git_refresh@@@ds:grf@@@Pull latest for all repos, run installs@@@ds:grf [repos_dir=~]
 @@@ds:git_squash@@@ds:gsq@@@Squash last n commits@@@ds:gsq [n_commits=1]
 @@@ds:git_status@@@ds:gs@@@Run git status for all repos@@@ds:gs
@@ -54,9 +55,11 @@
 @@@ds:jira@@@@@@Open Jira at specified workspace issue / search@@@ds:jira workspace_subdomain [issue|query]
 **@@@ds:join@@@ds:jn@@@Join two datasets with any keyset@@@ds:join file [file*] [jointype] [k|merge] [k2] [prefield=f] [awkargs]
 **@@@ds:join_by@@@@@@Join a shell array by given delimiter@@@ds:join_by delimiter [join_array]
+@@@ds:kill_port@@@ds:kp@@@Kill the process on a port or matching a pattern, walking up to a wrapper parent when it makes sense@@@ds:kp port|pattern
 **@@@ds:line@@@@@@Execute commands on var line@@@ds:line [seed_cmds] line_cmds [IFS=\n]
 **@@@ds:matches@@@@@@Get match lines from two datasets@@@ds:matches file [file] [awkargs]
 **@@@ds:mini@@@@@@Crude minify, remove whitespace and newlines@@@ds:mini [file*] [newline_sep=;] [blank_only=f]
+@@@ds:move@@@ds:mv@@@Move files/dirs, optionally filtered by [tag] or glob@@@ds:mv source target [filter]
 @@@ds:new@@@@@@Refresh zsh or bash interactive session@@@ds:new
 **@@@ds:newfs@@@@@@Convert field separators - i.e. tsv -> csv@@@ds:newfs [file] [newfs=,] [awkargs]
 @@@ds:nset@@@@@@Test name (function/alias/variable) is defined@@@ds:nset name [search_vars=f]
@@ -66,7 +69,7 @@
 **@@@ds:pivot@@@@@@Pivot tabular data@@@ds:pivot [file] [y_keys] [x_keys] [z_keys=count_xy] [agg_type]
 @@@ds:plot@@@@@@Get a scatter plot of from two fields@@@ds:plot [file] [field_y=1] [field_x=index]
 **@@@ds:pow@@@@@@Combinatorial frequency of data field values@@@ds:pow [file] [min] [return_fields=f] [invert=f] [awkargs]
-**@@@ds:prod@@@@@@Return product multiset of filelines@@@ds:pow file [file*] [awkargs]
+**@@@ds:prod@@@@@@Return product multiset of filelines@@@ds:prod file [file*] [awkargs]
 **@@@ds:random@@@@@@Generate a random number 0-1 or randomize text@@@ds:random [number|text]
 @@@ds:recent@@@@@@List files modified recently@@@ds:recent [dir=.] [days=7] [recurse=f] [hidden=f] [only_files=f]
 **@@@ds:reo@@@@@@Reorder/repeat/slice data by rows and cols@@@ds:reo [-h|file*] [rows] [cols] [prefield=t] [awkargs]

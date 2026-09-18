@@ -18,7 +18,18 @@ pyinstaller ds.spec
 
 This will create a `build` directory, update `ds.spec`, and generate the executable in the `dist` directory. Add the executable from `dist` to your PATH.
 
-Alternatively, for development, you can use the `ds.bat` wrapper (Windows) or create a similar shell script for Unix systems that calls `python ds.py` with the current directory as the first argument.
+Alternatively, for development, use one of the bundled wrappers, which call `python ds.py` with the current directory as the first argument:
+
+- **Unix (macOS, Linux):** `ds.sh`. It locates `ds.py` relative to itself, so put it on your PATH wherever you like:
+
+  ```bash
+  chmod +x ds.sh
+  ln -s "$PWD/ds.sh" ~/bin/ds
+  ```
+
+  Set `DS_PYTHON` to choose an interpreter; otherwise `python3` is used when present. An activated conda env or venv is picked up automatically.
+
+- **Windows:** `ds.bat`. Edit the `CD` line to point at your checkout before using it.
 
 The executable automatically uses the current directory as the working context.
 
