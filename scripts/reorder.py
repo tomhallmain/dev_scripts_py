@@ -56,6 +56,7 @@ _FRAME_FILTER_RE = re.compile(r"(!~|~|>=|<=|!=|>|<|=|[*/%+][0-9.]+$)")
 # cross-span position (field N for a row argument, row N for a column argument); without it
 # the token matches when any value in the span satisfies the test.
 _LEN_RE = re.compile(r"^(?:len|length)\((?P<scope>-?\d*)\)(?P<rest>.*)$", re.IGNORECASE)
+_ARITH_TAIL_RE = re.compile(r"^[*/%+\-][0-9.]+$")
 _REGEX_FILTER_RE = re.compile(r"^(?P<scope>-?\d+)?(?P<op>!~|~)(?P<pattern>.*)$")
 _COMP_FILTER_RE = re.compile(
     r"^(?P<scope>-?\d+)?(?P<arith>[*/%+\-][0-9.]+)?(?P<op>>=|<=|!=|>|<|=)(?P<rhs>.*)$"
@@ -247,11 +248,14 @@ def _parse_token(token: str) -> OrderToken:
     len_match = _LEN_RE.match(token)
     if len_match:
         scope = len_match.group("scope")
-        _, comp, rhs = split_comparator(len_match.group("rest"))
+        left, comp, rhs = split_comparator(len_match.group("rest"))
+        # An arithmetic tail such as "%11" applies to the measured length. With no
+        # comparator it is compared against zero, as a bare "%11" token is.
+        arith = left if left and _ARITH_TAIL_RE.match(left) else None
         if comp is None:
             comp, rhs = "=", "0"
         return OrderToken(
-            TYPE_FILTER, measure="len", op=comp, rhs=rhs,
+            TYPE_FILTER, measure="len", op=comp, rhs=rhs, arith=arith,
             scope=int(scope) if scope else None,
         )
 
@@ -315,7 +319,13 @@ def _matches_value(token: OrderToken, value: str, cased: bool) -> bool:
     """Test one cross-span value against a filter token."""
     cased = cased and not token.ignore_case
     if token.measure == "len":
-        return compare(len(value), token.rhs, token.op)
+        measured = len(value)
+        if token.arith:
+            try:
+                measured = eval(f"({measured}){token.arith}", {"__builtins__": {}}, {})
+            except Exception:
+                return False
+        return compare(measured, token.rhs, token.op)
 
     if token.op in ("~", "!~"):
         flags = 0 if cased else re.IGNORECASE
