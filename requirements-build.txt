@@ -1,0 +1,4 @@
+-r requirements.txt
+nuitka>=2.0
+# Lets Nuitka compress the onefile payload; without it the exe is larger.
+zstandard

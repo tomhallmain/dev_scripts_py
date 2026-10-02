@@ -37,6 +37,8 @@ venv/
 env/
 ENV/
 .venv/
+.venv-build/
+nuitka-crash-report.xml
 
 # Testing
 .pytest_cache/

@@ -10,13 +10,21 @@ All commands are namespaced to `ds` so there should be little to no clashing wit
 
 ### Building the Executable
 
-To create a `ds` executable, use PyInstaller with the provided spec file:
+To build a standalone `ds` executable that needs no Python, conda, or venv at runtime, run this with any Python 3:
 
 ```bash
-pyinstaller ds.spec
+python build_exe.py
 ```
 
-This will create a `build` directory, update `ds.spec`, and generate the executable in the `dist` directory. Add the executable from `dist` to your PATH.
+This compiles the project with [Nuitka](https://nuitka.net) into a single native executable, `dist/ds` on macOS/Linux or `dist\ds.exe` on Windows, and smoke-tests it with `ds commands`. Copy it somewhere on your PATH. The first build takes a few minutes; the script creates (or reuses) a dedicated `.venv-build` venv and installs `requirements-build.txt` (the runtime deps plus Nuitka) into it.
+
+- **C compiler required.** On macOS, install the Xcode Command Line Tools (`xcode-select --install`). On Windows, Nuitka uses Visual Studio Build Tools if installed, and otherwise downloads MinGW itself.
+- **Build on each OS** you want a binary for; Nuitka does not cross-compile. The binary targets the architecture of the Python that ran the build, so on Apple Silicon use a native arm64 Python (e.g. Homebrew's) rather than an Intel one.
+- **First run is slower.** The exe embeds the Python runtime and unpacks it once, on first run, into a folder under your user cache directory (`dev_scripts_py/ds-<build time>`). Later runs reuse it. Each rebuild gets a new folder; old ones are safe to delete.
+- **Copies on other Macs.** The binary is ad-hoc signed, which is enough on the Mac that built it. A copy downloaded onto another Mac gets quarantined by Gatekeeper; clear that with `xattr -d com.apple.quarantine ds`.
+- **Using an existing environment.** `python build_exe.py --current-env` builds with the running interpreter instead, which needs `requirements-build.txt` installed. Nuitka bundles libraries from whichever environment runs the build, so a lean venv gives a smaller exe than a full conda env. In either mode, the embedded Python runtime is the one that ran `build_exe.py`.
+
+The executable uses the directory it's invoked from as the working context, so you run it as `ds <command> ...`.
 
 Alternatively, for development, use one of the bundled wrappers, which call `python ds.py` with the current directory as the first argument:
 
