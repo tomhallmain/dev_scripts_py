@@ -1,4 +1,5 @@
 -r requirements.txt
-nuitka>=2.0
+# Pinned to a known good release; raise it deliberately and rebuild to check.
+nuitka==4.2.2
 # Lets Nuitka compress the onefile payload; without it the exe is larger.
 zstandard

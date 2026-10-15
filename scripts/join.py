@@ -62,6 +62,7 @@
 ## TODO string distance comparison
 from collections import defaultdict
 import re
+import sys
 
 from .utils import Utils
 
@@ -154,7 +155,7 @@ class Join:
                 for key_index, key in enumerate(_BiasMergeKeys):
                     if not key.isdigit():
                         print("Bias merge keys must be integers, found key: " + key)
-                        exit(1)
+                        sys.exit(1)
 
                     self.BiasMergeKeys[key] = key_index
 
@@ -166,7 +167,7 @@ class Join:
                 for key_index, key in enumerate(_BiasMergeExcludeKeys):
                     if not key.isdigit():
                         print("Bias merge exclude keys must be integers, found key: " + key)
-                        exit(1)
+                        sys.exit(1)
 
                     if key in self.BiasMergeKeys:
                         del self.BiasMergeKeys[key]
@@ -178,7 +179,7 @@ class Join:
 
             if not k1 and not k2:
                 print("Missing join key fields")
-                exit(1)
+                sys.exit(1)
 
             self.k1 = k1 if k1 else k2
             self.k2 = k2 if k2 else k1
@@ -191,7 +192,7 @@ class Join:
 
             if len(self.KeysInitial1) != len(self.KeysInitial2):
                 print("Keysets must be equal in length")
-                exit(1)
+                sys.exit(1)
 
             for i, key in enumerate(self.KeysInitial1):
                 if len(key) == 0:
@@ -446,7 +447,7 @@ class Join:
                 filename = data_file.name
             print(f"join: Could not locate keys in {filename}: ", end="")
             print(f"join: {MissingKeys}")
-            exit(1)
+            sys.exit(1)
 
     def _gen_merge_keys(self):
         if Utils.DEBUG:

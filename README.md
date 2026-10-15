@@ -16,13 +16,16 @@ To build a standalone `ds` executable that needs no Python, conda, or venv at ru
 python build_exe.py
 ```
 
-This compiles the project with [Nuitka](https://nuitka.net) into a single native executable, `dist/ds` on macOS/Linux or `dist\ds.exe` on Windows, and smoke-tests it with `ds commands`. Copy it somewhere on your PATH. The first build takes a few minutes; the script creates (or reuses) a dedicated `.venv-build` venv and installs `requirements-build.txt` (the runtime deps plus Nuitka) into it.
+This compiles the project with [Nuitka](https://nuitka.net) into a single native executable, `dist/ds` on macOS/Linux or `dist\ds.exe` on Windows, and smoke-tests it: `ds commands`, `ds version` and a sample `ds join`, run from your home directory with the tool cache in a temporary directory. Copy it somewhere on your PATH. The first build takes a few minutes; the script creates (or reuses) a dedicated `.venv-build` venv and installs `requirements-build.txt` (the runtime deps plus Nuitka) into it.
 
 - **C compiler required.** On macOS, install the Xcode Command Line Tools (`xcode-select --install`). On Windows, Nuitka uses Visual Studio Build Tools if installed, and otherwise downloads MinGW itself.
 - **Build on each OS** you want a binary for; Nuitka does not cross-compile. The binary targets the architecture of the Python that ran the build, so on Apple Silicon use a native arm64 Python (e.g. Homebrew's) rather than an Intel one.
-- **First run is slower.** The exe embeds the Python runtime and unpacks it once, on first run, into a folder under your user cache directory (`dev_scripts_py/ds-<build time>`). Later runs reuse it. Each rebuild gets a new folder; old ones are safe to delete.
+- **First run is slower.** The exe embeds the Python runtime and unpacks it once, on first run, into a folder under your user cache directory (`dev_scripts_py/unpacked/ds-<build time>`). Later runs reuse it. Each rebuild gets a new folder; old ones under `unpacked/` are safe to delete, as are any `dev_scripts_py/ds-<build time>` folders left by older builds.
+- **Build logs.** Each build times its steps and writes its log to `build/logs/build_exe-<build time>.log`; Nuitka's own output appears only in the console.
 - **Copies on other Macs.** The binary is ad-hoc signed, which is enough on the Mac that built it. A copy downloaded onto another Mac gets quarantined by Gatekeeper; clear that with `xattr -d com.apple.quarantine ds`.
 - **Using an existing environment.** `python build_exe.py --current-env` builds with the running interpreter instead, which needs `requirements-build.txt` installed. Nuitka bundles libraries from whichever environment runs the build, so a lean venv gives a smaller exe than a full conda env. In either mode, the embedded Python runtime is the one that ran `build_exe.py`.
+- **Version and build info.** The version comes from the `VERSION` file at the repo root and is shown in the executable's properties on Windows. Each build also writes `build/nuitka/build_info.json` (version, build time, Python and key package versions, and the commit it was built from, with a fingerprint of any uncommitted changes), which is bundled into the executable and shown by `ds version`.
+- **Repeating a build.** Each build records the build environment's `pip freeze` in `build/nuitka/build-requirements.lock.txt`. Keep a copy of a good one, and pass it with `python build_exe.py --lock=<file>` to install the build venv from it instead of `requirements-build.txt`. Delete `.venv-build` first for an exact copy, since packages missing from the lock file are not removed.
 
 The executable uses the directory it's invoked from as the working context, so you run it as `ds <command> ...`.
 
@@ -117,6 +120,7 @@ ds <command> --help
 #### System
 
 - `ds kill_port <port> [--force] [--dry-run]` - Kill all processes bound to a port
+- `ds version` - Show the version, and for a standalone build its build details
 
 #### Visualization (WIP)
 

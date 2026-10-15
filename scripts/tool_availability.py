@@ -3,7 +3,8 @@ Cache whether commands exist on PATH — roughly the idea of ``ds:nset`` + ``typ
 
 Results are stored under the user cache dir so later ``ds`` invocations skip repeated
 ``shutil.which`` / subprocess probes. Set ``DS_REFRESH_TOOL_CACHE=1`` to ignore the cache file
-for that process.
+for that process, or ``DS_CACHE_DIR`` to keep the cache file in another directory (the tests
+and the build's smoke test use it to leave the user's cache alone).
 """
 from __future__ import annotations
 
@@ -17,6 +18,9 @@ _CACHE: Dict[str, Any] | None = None
 
 
 def _cache_file() -> Path:
+    override = os.environ.get("DS_CACHE_DIR")
+    if override:
+        return Path(override) / "tool_availability.json"
     if os.name == "nt":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home())
         p = Path(base) / "dev_scripts_py" / "tool_availability.json"

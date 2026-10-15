@@ -1411,6 +1411,15 @@ def vi_cmd(search, directory, edit_all, no_edit, print_matches):
                   print_matches=print_matches or None)
 
 
+@cli.command(name="version")
+def version_cmd():
+    """
+    Show the ds version, and for a standalone build its build details.
+    """
+    from scripts.build_info import describe
+    click.echo(describe())
+
+
 def main():
     try:
         cli()
