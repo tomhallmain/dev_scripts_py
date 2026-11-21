@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -22,7 +23,9 @@ def test_cd_without_search_prints_home(
     assert result.exit_code == 0
     # cd_cmd normalizes without resolving symlinks, so that `cd "$(ds . cd)"` lands on
     # the logical path. Resolving here would expect /private/tmp/ds-home on macOS.
-    assert result.output.strip() == "/tmp/ds-home"
+    # On Windows the rooted path gains the current drive (C:\tmp\ds-home).
+    expected = os.path.abspath(os.path.join(os.sep, "tmp", "ds-home"))
+    assert result.output.strip() == expected
 
 
 def test_cd_direct_directory_prints_absolute_path(tmp_path: Path, runner: CliRunner) -> None:

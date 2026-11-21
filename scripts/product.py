@@ -1,40 +1,36 @@
+"""``ds prod`` -- product multiset of the lines of several inputs.
+
+Each input is one set of lines. Every combination taking one line from each set, in input
+order, is printed joined by a space; the first input varies slowest. Lines are used as they
+are, without trimming. Passing the same file twice gives its product with itself.
+"""
+import itertools
 import sys
+from typing import Iterable, Iterator, List, Sequence
 
 
-def SimplePrintForMultiplier(MSets, MSetLen, start, max_val, mult, max_mult, advance_val=None):
-    iteration = max_mult - mult + 1
-    init_adv = advance_val
-    dec_mult = mult - 1
-    for i in range(start, max_val + 1):
-        if iteration < 2:
-            advance_val = MSets[(iteration, i)]
-        else:
-            advance_val = str(init_adv) + ' ' + str(MSets[(iteration, i)])
-        if mult > 1:
-            SimplePrintForMultiplier(MSets, MSetLen, 1, MSetLen[iteration + 1], dec_mult, max_mult, advance_val)
-        else:
-            print(advance_val)
+def read_line_set(file_path: str) -> List[str]:
+    with open(file_path, encoding="utf-8", errors="replace") as f:
+        return [line.rstrip("\n").rstrip("\r") for line in f]
 
 
-def product_main(filenames):
-    MSets = {}
-    MSetLen = {}
-    set_base = 0
-    prev_file = None
+def text_line_set(text: str) -> List[str]:
+    return [line.rstrip("\r") for line in text.splitlines()]
 
-    for filename in filenames:
-        with open(filename, 'r') as f:
-            if filename != prev_file:
-                set_base += 1
-            prev_file = filename
-            MSetLen[set_base] = 0
-            for line in f:
-                MSetLen[set_base] += 1
-                MSets[(set_base, MSetLen[set_base])] = line.strip()
 
-    msets_len = set_base
-    if msets_len and MSetLen.get(1):
-        SimplePrintForMultiplier(MSets, MSetLen, 1, MSetLen[1], msets_len, msets_len)
+def product_lines(line_sets: Sequence[Sequence[str]], separator: str = " ") -> Iterator[str]:
+    if not line_sets or any(len(s) == 0 for s in line_sets):
+        return iter(())
+    return (separator.join(combo) for combo in itertools.product(*line_sets))
+
+
+def product_main(filenames: Iterable[str], stdin_text=None, echo=print) -> None:
+    line_sets = []
+    if stdin_text:
+        line_sets.append(text_line_set(stdin_text))
+    line_sets.extend(read_line_set(f) for f in filenames)
+    for line in product_lines(line_sets):
+        echo(line)
 
 
 if __name__ == "__main__":

@@ -1,121 +1,126 @@
+"""``ds agg`` -- append row aggregates as new columns and column aggregates as new rows.
+
+An expression is ``OP`` or ``OP|SCOPE``. ``OP`` is ``+`` (sum), ``-`` (negated sum),
+``*`` (product), ``/`` (first value divided by each following non-zero value) or
+``m``/``mean``. ``SCOPE`` is ``all`` (the default) or ``START..END``: field numbers for row
+aggregates, line numbers (counting a header line) for column aggregates.
+
+Only numeric values take part; a row or column without any shows the expression itself,
+so a header row or a text label column carries the expression as its label. Column
+aggregates also cover the new row-aggregate columns. With ``header``, the first line gets
+the expressions as its new cells, is left out of column aggregates, and every line gets a
+leading cell that holds the expression on the summary rows.
+"""
 import re
+from typing import List, Optional, Sequence, Tuple
+
+DEFAULT_EXPRESSION = "+|all"
+OPS = {"+": "+", "-": "-", "\\-": "-", "*": "*", "/": "/", "m": "m", "mean": "m"}
+
+_NUMBER_RE = re.compile(r"^\s*[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?\s*$")
+
+
+class AggError(Exception):
+    pass
+
+
+def awk_number(value: float) -> str:
+    """A number as AWK prints it (``%.6g`` unless an integer)."""
+    if value == int(value) and abs(value) < 1e16:
+        return str(int(value))
+    return "%.6g" % value
+
+
+def to_number(value: str) -> Optional[float]:
+    return float(value) if _NUMBER_RE.match(value) else None
+
+
+class AggExpression:
+    def __init__(self, text: str):
+        self.raw = text.strip()
+        op_text, _, scope = self.raw.partition("|")
+        if op_text not in OPS:
+            raise AggError(
+                f'unsupported aggregation "{self.raw}"; supported: OP or OP|all or '
+                "OP|START..END with OP one of + - * / m mean")
+        self.op = OPS[op_text]
+        self.scope: Optional[Tuple[int, int]] = None
+        scope = scope.strip()
+        if scope and scope != "all":
+            m = re.fullmatch(r"(\d+)\.\.(\d+)", scope)
+            if not m:
+                raise AggError(f'unsupported scope "{scope}" in "{self.raw}"; use all or START..END')
+            self.scope = (int(m.group(1)), int(m.group(2)))
+
+    def in_scope(self, index: int) -> bool:
+        return self.scope is None or self.scope[0] <= index <= self.scope[1]
+
+    def apply(self, values: Sequence[float]) -> Optional[float]:
+        if not values:
+            return None
+        if self.op == "+":
+            return sum(values)
+        if self.op == "-":
+            return -sum(values)
+        if self.op == "*":
+            result = 1.0
+            for v in values:
+                result *= v
+            return result
+        if self.op == "/":
+            result = values[0]
+            for v in values[1:]:
+                if v != 0:
+                    result /= v
+            return result
+        return sum(values) / len(values)
+
+    def cell(self, values: Sequence[float]) -> str:
+        result = self.apply(values)
+        return self.raw if result is None else awk_number(result)
+
+
+def parse_expressions(spec: Optional[str]) -> List[AggExpression]:
+    if not spec or spec.strip() == "0":
+        return []
+    return [AggExpression(part) for part in spec.split(",") if part.strip()]
+
 
 class Agg:
-    def __init__(self, r_aggs=None, c_aggs=None, extract_vals=0, fixed_nf=25, og_off=1):
-        self.r_aggs = r_aggs
-        self.c_aggs = c_aggs
-        self.extract_vals = extract_vals
-        self.fixed_nf = fixed_nf
-        self.og_off = og_off
-        self.RowAggs = {}
-        self.RowAggExpr = {}
-        self.ColumnAggs = {}
-        self.CrossAggs = {}
-        self.AllAgg = {}
-        self.SearchAgg = {}
-        self.ConditionalAgg = {}
-        self.IndexNA = {}
-        self.TruncVal = {}
-        self.header_unset = True
-        self.max_nr = 0
-        self.OFS = self.set_OFS()
+    def __init__(self, r_aggs: Optional[str] = None, c_aggs: Optional[str] = None,
+                 header: bool = False):
+        if r_aggs is None and c_aggs is None:
+            r_aggs = c_aggs = DEFAULT_EXPRESSION
+        self.row_aggs = parse_expressions(r_aggs)
+        self.column_aggs = parse_expressions(c_aggs)
+        self.header = header
 
-    def set_OFS(self):
-        return "\t"
+    def run(self, rows: Sequence[Sequence[str]]) -> List[List[str]]:
+        rows = [list(r) for r in rows if r and any(c.strip() for c in r)]
+        extended: List[List[str]] = []
+        for i, row in enumerate(rows):
+            if self.header and i == 0:
+                extended.append(row + [e.raw for e in self.row_aggs])
+                continue
+            new_cells = []
+            for expr in self.row_aggs:
+                values = [v for f, cell in enumerate(row, start=1) if expr.in_scope(f)
+                          for v in [to_number(cell)] if v is not None]
+                new_cells.append(expr.cell(values))
+            extended.append(row + new_cells)
 
-    def gen_all_aggregation_expr(self, max, call):
-        for agg in self.AllAgg:
-            pass
-
-    def aggregation_expr(self, agg_expr, call, call_idx, reparse):
-        orig_agg_expr = agg_expr
-        agg_expr = re.sub(r'\s+', '', agg_expr)
-        all_agg = 0
-        mean_agg = 0
-        spec_agg = 0
-        conditional_agg = 0
-        if re.search(r'^([\+\-\*\/]|m(ean)?)', agg_expr):
-            pass
-        elif re.search(r'^~', agg_expr) and not re.search(r'[^\|]+\|[^\|]+', agg_expr):
-            pass
-        elif re.search(r'[A-z]', agg_expr):
-            pass
-        elif re.search(r'^(\$[0-9]+|[0-9\.]+)([\+\-\*\/][\+\-\*\/]?(\$[0-9]+|[0-9\.]+))+$', agg_expr):
-            pass
-        elif re.search(r'^(\$)?[0-9]+$', agg_expr):
-            pass
-        else:
-            pass
-        if not (all_agg or conditional_agg or self.SearchAgg[agg_expr]):
-            pass
-        return agg_expr
-
-    def set_conditional_agg(self, conditional_agg_expr):
-        ConditionalAggParts = re.split(r'\|', conditional_agg_expr)
-        conditions = ConditionalAggParts[2]
-        n_ors = len(re.split(r'\s*___OR___\s*', conditions))
-        for or_i in range(1, n_ors+1):
-            pass
-        return n_ors
-
-    def get_or_set_index_na(self, agg, idx, call):
-        if self.IndexNA.get((agg, idx, call)):
-            return self.IndexNA[(agg, idx, call)]
-        n_ors = self.ConditionalAgg[agg]
-        idx_na = 1
-        for or_i in range(1, n_ors+1):
-            pass
-        self.IndexNA[(agg, idx, call)] = idx_na
-        return idx_na
-
-    def resolve_conditional_row_aggs(self):
-        for i in self.RA:
-            pass
-
-    def gen_rexpr(self, agg):
-        expr = ""
-        agg_expr = self.RowAggExpr[self.RAI[agg]]
-        if self.SearchAgg[agg]:
-            pass
-        elif self.ConditionalAgg[agg]:
-            pass
-        else:
-            pass
-        return expr
-
-    def advance_carry_vector(self, column_agg_i, nf, agg_amort, carry):
-        CarryVec = re.split(r',', carry)
-        t_carry = ""
-        active_key = ""
-        search = 0
-        if self.SearchAgg[agg_amort]:
-            pass
-        else:
-            pass
-        for f in range(1, nf+1):
-            pass
-        if not search and not self.header or self.NR > 1:
-            pass
-        return t_carry
-
-    def standardize_cross_aggregation_expr(self, XA, CrossAggForm, CrossAggExpr, max_rows, max_cols):
-        for compound_i in XA:
-            pass
-
-    def resolve_row_cross_aggs(self):
-        for compound_i in self.XA:
-            pass
-
-    def eval_comp_expr(self, left, right, comp):
-        return (comp == "=" and left == right) or \
-               (comp == "!=" and left != right) or \
-               (comp == "<" and left < right) or \
-               (comp == ">" and left > right)
-
-    def indexed(self, expr, test_idx):
-        return re.search(r'\$' + str(test_idx) + r'([^0-9]|$)', expr)
-
-    def get_or_set_trunc_val(self, val):
-        if val in self.TruncVal:
-            return self.TruncVal[val]
-        large_val = val > 999
+        out = [([""] + r if self.header else r) for r in extended]
+        n_columns = max((len(r) for r in extended), default=0)
+        for expr in self.column_aggs:
+            summary = []
+            for c in range(n_columns):
+                values = []
+                for line_no, row in enumerate(extended, start=1):
+                    if (self.header and line_no == 1) or not expr.in_scope(line_no):
+                        continue
+                    v = to_number(row[c]) if c < len(row) else None
+                    if v is not None:
+                        values.append(v)
+                summary.append(expr.cell(values))
+            out.append(([expr.raw] if self.header else []) + summary)
+        return out

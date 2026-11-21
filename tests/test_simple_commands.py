@@ -436,6 +436,14 @@ def test_index_file_and_stdin_smoke(tmp_path, runner: CliRunner) -> None:
     assert r_stdin.exit_code == 0
 
 
+def test_cardinality_counts_distinct_values_per_field(tmp_path, runner: CliRunner) -> None:
+    p = tmp_path / "c.txt"
+    p.write_text("a b\na c\na c\n", encoding="utf-8")
+    result = runner.invoke(cli, [".", "cardinality", str(p)], catch_exceptions=False)
+    assert result.exit_code == 0
+    assert result.output == "1 1\n2 2\n"
+
+
 def test_cardinality_extra_args_warns(tmp_path, runner: CliRunner) -> None:
     p = tmp_path / "c.txt"
     p.write_text("x\n", encoding="utf-8")

@@ -1,109 +1,105 @@
+"""``ds diff`` -- side-by-side line diff, optionally coloured, without an external ``diff``.
+
+Each output row shows the left line, a marker and the right line: ``|`` for a changed line,
+``<`` for a line only on the left, ``>`` for a line only on the right, and a space for a
+common line. Lines are compared ignoring changes in the amount of whitespace (as with
+``diff -b``), and tabs are expanded before layout.
+"""
+import difflib
 import re
-import sys
-from termcolor import colored
+from typing import List, Sequence, Tuple
 
-class DiffColor:
-    def __init__(self, tty_half):
-        self.bdiff = r" \|($| )"
-        self.ldiff = r" <$"
-        self.rdiff = r" > ?$"
+RESET = "\033[0m"
+CYAN = "\033[36m"
+RED = "\033[31m"
+MAGENTA = "\033[35m"
 
-        self.red = 'red'
-        self.cyan = 'cyan'
-        self.mag = 'magenta'
+_SPACE_RUN = re.compile(r"[ \t]+")
 
-        self.left_n_chars = tty_half - 2
-        self.diff_start = tty_half - 1
-        self.right_start = tty_half + 2
+# One aligned row: (left text, marker, right text).
+Row = Tuple[str, str, str]
 
-        if tty_half % 2 == 0:
-            self.left_n_chars -= 1
-            self.diff_start -= 1
-            self.right_start -= 1
 
-    def color_diff(self, lines):
-        for line in lines:
-            coloron = False
-            left = line[:self.left_n_chars]
-            diff = line[self.diff_start:self.diff_start+3]
-            right = line[self.right_start:]
+def _compare_key(line: str) -> str:
+    return _SPACE_RUN.sub(" ", line).rstrip()
 
-            if re.search(self.ldiff, diff):
-                print(colored(line, self.cyan))
-            elif re.search(self.rdiff, diff):
-                print(colored(line, self.red))
-            elif re.search(self.bdiff, diff):
-                self.color_chars(line, left, right, diff)
-            else:
-                print(line)
 
-    def color_chars(self, line, left, right, diff):
-        lchars = list(left)
-        rchars = list(right)
-        l_len = len(lchars)
-        r_len = len(rchars)
-        j = 1
-        recap = False
-        recaps = 0
+def text_to_lines(text: str) -> List[str]:
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    return [line.rstrip("\r") for line in lines]
 
-        for i in range(l_len):
-            if lchars[i] == rchars[j-1]:
-                if coloron:
-                    coloron = False
-                    sys.stdout.write('\033[0m')
-                j += 1
-            else:
-                if recap:
-                    recap = False
-                tmp_j = j
-                for k in range(j-1, l_len):
-                    mtch = lchars[i] == rchars[k]
-                    mtch1 = lchars[i+1] == rchars[k+1] if i+1 < l_len and k+1 < r_len else False
-                    mtch2 = lchars[i+2] == rchars[k+2] if i+2 < l_len and k+2 < r_len else False
-                    mtch3 = lchars[i+3] == rchars[k+3] if i+3 < l_len and k+3 < r_len else False
-                    if mtch and mtch1 and mtch2 and mtch3:
-                        recap = True
-                        recaps += 1
-                        j = k + recaps + 1
-                        coloron = False
-                        sys.stdout.write('\033[0m')
-                        break
-                    j = tmp_j
-                if not recap and not coloron:
-                    sys.stdout.write(colored('', self.cyan))
-                    coloron = True
-            sys.stdout.write("%s" % lchars[i])
 
-        sys.stdout.write(colored(diff, self.mag))
-        j = 1
-        recap = False
-        recaps = 0
-        for i in range(r_len):
-            if rchars[i] == lchars[j-1]:
-                if coloron:
-                    coloron = False
-                    sys.stdout.write('\033[0m')
-                j += 1
-            else:
-                if recap:
-                    recap = False
-                tmp_j = j
-                for k in range(j-1, r_len):
-                    mtch = rchars[i] == lchars[k]
-                    mtch1 = rchars[i+1] == lchars[k+1] if i+1 < r_len and k+1 < l_len else False
-                    mtch2 = rchars[i+2] == lchars[k+2] if i+2 < r_len and k+2 < l_len else False
-                    mtch3 = rchars[i+3] == lchars[k+3] if i+3 < r_len and k+3 < l_len else False
-                    if mtch and mtch1 and mtch2 and mtch3:
-                        recap = True
-                        recaps += 1
-                        j = k + recaps + 1
-                        coloron = False
-                        sys.stdout.write('\033[0m')
-                        break
-                    j = tmp_j
-                if not recap and not coloron:
-                    sys.stdout.write(colored('', self.red))
-                    coloron = True
-            sys.stdout.write("%s" % rchars[i])
+def literal_to_lines(value: str) -> List[str]:
+    """A literal argument, with ``\\n`` and ``\\t`` escapes interpreted as ``echo -e`` does."""
+    return text_to_lines(value.replace("\\n", "\n").replace("\\t", "\t"))
 
-        print("")
+
+def diff_rows(left: Sequence[str], right: Sequence[str]) -> List[Row]:
+    matcher = difflib.SequenceMatcher(
+        None, [_compare_key(x) for x in left], [_compare_key(x) for x in right], autojunk=False
+    )
+    rows: List[Row] = []
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            rows.extend((left[i], " ", right[j]) for i, j in zip(range(i1, i2), range(j1, j2)))
+        elif tag == "delete":
+            rows.extend((left[i], "<", "") for i in range(i1, i2))
+        elif tag == "insert":
+            rows.extend(("", ">", right[j]) for j in range(j1, j2))
+        else:
+            n_left, n_right = i2 - i1, j2 - j1
+            for k in range(max(n_left, n_right)):
+                if k < n_left and k < n_right:
+                    rows.append((left[i1 + k], "|", right[j1 + k]))
+                elif k < n_left:
+                    rows.append((left[i1 + k], "<", ""))
+                else:
+                    rows.append(("", ">", right[j1 + k]))
+    return rows
+
+
+def _colour_changed(left: str, right: str) -> Tuple[str, str]:
+    """Colour the characters that differ between a changed pair: left cyan, right red."""
+    matcher = difflib.SequenceMatcher(None, left, right, autojunk=False)
+    out_left, out_right = [], []
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            out_left.append(left[i1:i2])
+            out_right.append(right[j1:j2])
+            continue
+        if i2 > i1:
+            out_left.append(CYAN + left[i1:i2] + RESET)
+        if j2 > j1:
+            out_right.append(RED + right[j1:j2] + RESET)
+    return "".join(out_left), "".join(out_right)
+
+
+def render_rows(rows: Sequence[Row], width: int, *, suppress_common: bool = False,
+                colour: bool = False) -> List[str]:
+    """Lay rows out in two columns filling ``width``; trailing whitespace is trimmed."""
+    column = max((width - 3) // 2, 1)
+    out: List[str] = []
+    for left, marker, right in rows:
+        if marker == " " and suppress_common:
+            continue
+        left = left.expandtabs()[:column]
+        right = right.expandtabs()[:column]
+        padding = " " * (column - len(left))
+        if not colour or marker == " ":
+            out.append(f"{left}{padding} {marker} {right}".rstrip())
+        elif marker == "<":
+            out.append(f"{CYAN}{left}{RESET}{padding} {marker}".rstrip())
+        elif marker == ">":
+            out.append(f"{padding} {marker} {RED}{right}{RESET}")
+        else:
+            c_left, c_right = _colour_changed(left, right)
+            out.append(f"{c_left}{padding} {MAGENTA}{marker}{RESET} {c_right}")
+    return out
+
+
+def side_by_side(left: Sequence[str], right: Sequence[str], width: int, *,
+                 suppress_common: bool = False, colour: bool = False) -> List[str]:
+    return render_rows(diff_rows(left, right), width,
+                       suppress_common=suppress_common, colour=colour)

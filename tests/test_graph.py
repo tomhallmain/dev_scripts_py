@@ -3,7 +3,7 @@ Graph / DAG backtrace tests, adapted from dev_scripts/tests/t_graph.sh.
 
 The original shell tests used ``FS=``: (colon-separated child/parent) and colon-separated
 paths in the output. This port uses whitespace-separated fields on each line and
-space-separated path strings from :func:`scripts.graph.extend`.
+space-separated path strings from :func:`scripts.graph.backtrace`.
 """
 from __future__ import annotations
 
@@ -74,7 +74,7 @@ def test_graph_cycle_exits_nonzero() -> None:
 
 
 def test_graph_cli_stdin_smoke(runner: CliRunner) -> None:
-    """CLI pipes edges on stdin; output includes graph line (WIP banner may precede)."""
+    """CLI pipes edges on stdin; output includes the graph line."""
     result = runner.invoke(
         cli,
         [".", "graph"],
@@ -96,3 +96,26 @@ def test_graph_cli_optional_file(runner: CliRunner, tmp_path: Path) -> None:
     )
     assert result.exit_code == 0
     assert "4 3 2 1" in result.output
+
+
+def test_graph_indirect_cycle_from_non_base_is_reported() -> None:
+    """``c → a → b → a`` loops back to ``a``; reported as a cycle instead of recursing."""
+    out: list[str] = []
+    code = GraphDagBacktrace(echo=out.append).run(["c a\n", "a b\n", "b a\n"])
+    assert code == 1
+    assert out == ["WARNING: 1 cycles found!", "CYCLENODE__ a"]
+
+
+def test_graph_indirect_cycle_with_print_bases() -> None:
+    """Two-node loop: each shoot's chain closes on the other node."""
+    out: list[str] = []
+    code = GraphDagBacktrace(print_bases=True, echo=out.append).run(["a b\n", "b a\n"])
+    assert code == 1
+    assert out == ["WARNING: 2 cycles found!", "CYCLENODE__ a", "CYCLENODE__ b"]
+
+
+def test_graph_cli_has_no_wip_banner(runner: CliRunner) -> None:
+    result = runner.invoke(cli, [".", "graph"], input="1 2\n", catch_exceptions=False)
+    assert result.exit_code == 0
+    assert "work-in-progress" not in result.output
+    assert result.output == "2 1\n"

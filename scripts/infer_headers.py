@@ -1,131 +1,123 @@
-#!/usr/bin/awk TODO
-#
-# Script to infer if headers are present in the first row of a file
-#
-#
+"""``ds inferh`` -- infer whether the first row of a data file is a header row.
 
+The first row is scored against up to ``max_rows - 1`` following control rows:
 
-BEGIN {
-    # is integer
-    Re["i"] = "^[0-9]+$"
-    # is decimal
-    Re["d"] = "^[0-9]+\.[0-9]+$"
-    # is alpha
-    Re["a"] = "[A-z]+"
-    # is uppercase letters
-    Re["u"] = "^[A-Z]+$"
-    # has integer
-    Re["hi"] = "[0-9]+"
-    # has decimal
-    Re["hd"] = "[0-9]+\.[0-9]+"
-    # has alpha
-    Re["ha"] = "[A-z]+"
-    # has uppercase letters
-    Re["hu"] = "[A-Z]+"
-    # does not have lowercase letters
-    Re["nl"] = "^[^a-z]+$"
-    # words with spaces
-    Re["w"] = "[A-z ]+"
-    # no spaces
-    Re["ns"] = "^[^[:space:]]$"
-    # the string ` id ` appears in any casing
-    Re["id"] = "(^|_| |\-)?[Ii][Dd](\-|_| |$)"
-    # date1
-    Re["d1"] = "^[0-9]{1,2}[\-\.\/][0-9]{1,2}[\-\.\/]([0-9]{2}|[0-9]{4})$"
-    # date2
-    Re["d2"] = "^[0-9]{4}[\-\.\/][0-9]{1,2}[\-\.\/][0-9]{1,2}$"
-    # link
-    Re["l"] = ":\/\/"
-    # json
-    Re["j"] = "^\{[,:\"\'{}\[\]A-z0-9.\-+ \n\r\t]{2,}\}$"
-    # html/xml
+- a first-row field matching a data-like pattern (integer, decimal, date, link, JSON)
+  scores -100, a header-like pattern (alpha, uppercase, words, ``id``) +30, and a field
+  that looks like a column name (CamelCase, snake_case, CONSTANT_CASE, a statistical or
+  time-related term) +20; a first row with fewer than two fields scores -100
+- each control row whose field count differs from the first row scores -50
+- the length difference between each control field and the first-row field above it adds
+  ``|difference| / (max_rows - 1)``
+- per field and pattern seen in the control rows, ``|first_row_match - share_of_control_rows|``
+  is added
 
-    NonHeaderRe = " i d d1 d2 l j "
-    HeaderRe = " a u w id "
+A positive total means a header row. Fewer than two rows means no header.
+"""
+import csv
+import math
+import re
+from collections import defaultdict
+from typing import Dict, List, Optional, Sequence, Tuple
 
-    max_rows = 100
-    potential_header_rows = 1
-    control_rows = max_rows - potential_header_rows
-    if (!trim) trim = "true"
+PATTERNS = {
+    "i": re.compile(r"^[0-9]+$"),
+    "d": re.compile(r"^[0-9]+\.[0-9]+$"),
+    "a": re.compile(r"[A-Za-z]+"),
+    "u": re.compile(r"^[A-Z]+$"),
+    "hi": re.compile(r"[0-9]+"),
+    "hd": re.compile(r"[0-9]+\.[0-9]+"),
+    "ha": re.compile(r"[A-Za-z]+"),
+    "hu": re.compile(r"[A-Z]+"),
+    "nl": re.compile(r"^[^a-z]+$"),
+    "w": re.compile(r"[A-Za-z ]+"),
+    "ns": re.compile(r"^\S$"),
+    "id": re.compile(r"(^|_| |-)?[Ii][Dd](-|_| |$)"),
+    "d1": re.compile(r"^[0-9]{1,2}[-./][0-9]{1,2}[-./]([0-9]{2}|[0-9]{4})$"),
+    "d2": re.compile(r"^[0-9]{4}[-./][0-9]{1,2}[-./][0-9]{1,2}$"),
+    "l": re.compile(r"://"),
+    "j": re.compile(r"^\{[,:\"'{}\[\]A-z0-9.\-+ \n\r\t]{2,}\}$"),
+    "x": re.compile(r"<[^>]+>"),
 }
+NON_HEADER_PATTERNS = {"i", "d", "d1", "d2", "l", "j"}
+HEADER_PATTERNS = {"a", "u", "w", "id"}
 
-NR == 1 {
-    if (NF < 2) headerScore -= 100
+_LIKELY_HEADER = [
+    re.compile(r"^[A-Z][a-z]+([A-Z][a-z]+)*$"),
+    re.compile(r"^[a-z]+(_[a-z]+)*$"),
+    re.compile(r"^[A-Z_]+$"),
+    re.compile(r"^(sum|avg|count|total|min|max|mean|median)_?", re.IGNORECASE),
+    re.compile(r"(date|time|timestamp|created|updated|modified)", re.IGNORECASE),
+]
 
-    # Evaluate first row field values
-    for (i = 1; i <= NF; i++) {
-        field = TrimField($i)
-        BuildFirstRowScore(field, i)
-    }
+DEFAULT_MAX_ROWS = 100
 
-    next
-}
 
-NR <= max_rows {
-    for (i = 1; i <= NF; i++) {
-        field = TrimField($i)
-        BuildControlRowScore(field, i)
-    }
-}
+def split_row(line: str, field_separator: Optional[str]) -> List[str]:
+    """Split one line; a single-character separator honours double-quoted fields."""
+    if field_separator and len(field_separator) == 1 and not field_separator.isspace() \
+            and '"' in line:
+        return next(csv.reader([line], delimiter=field_separator))
+    if field_separator and field_separator.strip():
+        return line.split(field_separator)
+    return line.split()
 
-END {
-    if (NR < max_rows) {
-        max_rows = NR
-        control_rows = max_rows - potential_header_rows
-    }
 
-    CalcSims(FirstRow, ControlRows)
-  
-    if (debug) print headerScore
-  
-    if (headerScore > 0)
-        exit 0
-    else
-        exit 1
-}
+def is_likely_header(field: str) -> bool:
+    return any(p.search(field) for p in _LIKELY_HEADER)
 
-function TrimField(field) {
-    gsub(/^[[:space:]]+|[[:space:]]+$/, "", field)
-    return field
-}
-function BuildFirstRowScore(field, position) {
-    FirstRow[position, "len"] = length(field)
-  
-    for (m in Re) {
-        re = Re[m]
-        if (field ~ re) {
-            FirstRow[position, m] = 1
-            if (NonHeaderRe ~ " " m " ") headerScore -= 100
-            if (HeaderRe ~ " " m " ") headerScore += 30
-      
-            if (debug && NR < 3) print NR, position, m, field, headerScore
-        }
-    }
-}
-function BuildControlRowScore(field, position) {
-    headerScore += sqrt((FirstRow[position, "len"] - length(field))**2) / control_rows
-  
-    for (m in Re) {
-        if (field ~ Re[m]) {
-            ControlRow[position, m] += 1
-      
-            if (debug && NR < 3) print NR, position, m, field, headerScore
-        }
-    }
-}
-function CalcSims(first, control) {
-    if (debug) print "--- start calc sim ---"
-  
-    for (i = 1; i <= NF; i++) {
-        for (m in Re) {
-            first_score = first[i, m]
-            ctrl_score = control[i, m]
-            headerScore += sqrt((first_score - ctrl_score / control_rows)**2)
-      
-            if (debug) print i, m, first_score, ctrl_score/control_rows, headerScore
-        }
-    }
-  
-    if (debug) print "--- end calc sim ---"
-}
 
+def header_score(lines: Sequence[str], field_separator: Optional[str],
+                 *, max_rows: int = DEFAULT_MAX_ROWS, trim: bool = True) -> Optional[float]:
+    """Score for the first of ``lines`` being a header, or ``None`` with fewer than two rows."""
+    lines = [line.rstrip("\n").rstrip("\r") for line in lines]
+    analysed = lines[:max_rows]
+    if len(analysed) < 2:
+        return None
+    length_divisor = max_rows - 1
+
+    def fields_of(line: str) -> List[str]:
+        fields = split_row(line, field_separator)
+        return [f.strip() for f in fields] if trim else fields
+
+    score = 0.0
+    first = fields_of(analysed[0])
+    if len(first) < 2:
+        score -= 100
+    first_lengths: Dict[int, int] = {}
+    first_matches: Dict[Tuple[int, str], int] = {}
+    for i, field in enumerate(first):
+        first_lengths[i] = len(field)
+        for name, pattern in PATTERNS.items():
+            if pattern.search(field):
+                first_matches[(i, name)] = 1
+                if name in NON_HEADER_PATTERNS:
+                    score -= 100
+                if name in HEADER_PATTERNS:
+                    score += 30
+        if is_likely_header(field):
+            score += 20
+
+    control_matches: Dict[Tuple[int, str], int] = defaultdict(int)
+    for line in analysed[1:]:
+        fields = fields_of(line)
+        if len(fields) != len(first):
+            score -= 50
+        for i, field in enumerate(fields):
+            score += abs(first_lengths.get(i, 0) - len(field)) / length_divisor
+            for name, pattern in PATTERNS.items():
+                if pattern.search(field):
+                    control_matches[(i, name)] += 1
+
+    control_rows = len(analysed) - 1
+    for i in range(len(first)):
+        for name in PATTERNS:
+            count = control_matches.get((i, name), 0)
+            if count > 0:
+                score += math.sqrt((first_matches.get((i, name), 0) - count / control_rows) ** 2)
+    return score
+
+
+def has_header(lines: Sequence[str], field_separator: Optional[str], **kwargs) -> bool:
+    score = header_score(lines, field_separator, **kwargs)
+    return score is not None and score > 0

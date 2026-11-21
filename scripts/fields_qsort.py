@@ -1,315 +1,150 @@
-import random
+"""``ds sortm`` -- sort lines by one or more fields.
+
+Keys are 1-based field indices or ``NF`` (the last field). If any key is not an index of
+at most three digits, all keys are header patterns instead: each is a case-insensitive
+regex matched against the start of the first row's fields, and that row stays first.
+
+The values of the key fields are joined by the field separator into one sort key per line.
+With ``deterministic``, the remaining fields are appended so that only identical lines tie.
+
+Comparison follows AWK, since that is what defines this command's ordering:
+
+- default: a sort key that is a single field compares numerically against another numeric
+  one, everything else compares as a string
+- type ``n``: the leading number of the key is compared first, then the text after it;
+  a key without a leading number compares as a string against the other key (a number
+  in its AWK string form), so e.g. ``,,`` sorts before numbers and ``a,1`` after them
+- type ``i``: keys are lowercased first (and so always compare as strings)
+
+Lines with equal keys keep their input order. Blank lines are dropped.
+"""
+import functools
+import re
+from typing import List, Optional, Sequence, Tuple
+
+from scripts.field_rows import split_fields
+
+# A leading number, optionally with spaces, a currency sign, a sign and thousands commas.
+_LEADING_NUMBER_RE = re.compile(
+    r"^\s*\$?\s?-?\$?([0-9]{0,3},)*[0-9]*\.?[0-9]+((E|e)(\+|-)?[0-9]+)?"
+)
+_STRTONUM_RE = re.compile(r"^\s*[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?")
+_NUMERIC_STRING_RE = re.compile(r"^\s*[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?\s*$")
+
+
+class SortKeyError(Exception):
+    pass
+
+
+def awk_strtonum(text: str) -> float:
+    """The number AWK reads from the start of ``text`` (0 when there is none)."""
+    m = _STRTONUM_RE.match(text)
+    return float(m.group(0)) if m else 0.0
+
+
+def awk_number_string(value: float) -> str:
+    """A number as AWK converts it to a string: integers plainly, others with ``%.6g``."""
+    if value == int(value) and abs(value) < 1e16:
+        return str(int(value))
+    return "%.6g" % value
+
+
+def leading_number(text: str) -> Optional[Tuple[float, str]]:
+    """``(value, rest)`` for a key starting with a number, else ``None``."""
+    m = _LEADING_NUMBER_RE.match(text)
+    if not m:
+        return None
+    return awk_strtonum(m.group(0)), text[m.end():]
+
+
+def _cmp(a, b) -> int:
+    return (a > b) - (a < b)
+
+
+def compare_default(a: str, b: str, single_field: bool) -> int:
+    if single_field and _NUMERIC_STRING_RE.match(a) and _NUMERIC_STRING_RE.match(b):
+        return _cmp(float(a), float(b))
+    return _cmp(a, b)
+
+
+def compare_numeric(a: str, b: str) -> int:
+    na, nb = leading_number(a), leading_number(b)
+    if na is not None and nb is not None:
+        return _cmp(na[0], nb[0]) or _cmp(na[1], nb[1])
+    left = awk_number_string(na[0]) if na is not None else a
+    right = awk_number_string(nb[0]) if nb is not None else b
+    return _cmp(left, right)
+
 
 class SortM:
-    def __init__(self, data_file, keys="", order='a', sort_type="", header=None, gen_keys=None, deterministic=None, multisort=None):
-        self.data_file = data_file
-        self.keys = keys
-        self.Keys = {}
-        self.order = order
-        self.sort_type = sort_type
+    def __init__(self, keys: Optional[str] = "1", order: Optional[str] = "a",
+                 sort_type: Optional[str] = "", *, field_separator: Optional[str] = None,
+                 header: bool = False, deterministic: bool = False):
+        self.field_separator = field_separator
+        self.key_separator = field_separator if field_separator and field_separator.strip() else " "
+        self.descending = bool(order) and "desc".startswith(order)
+        sort_type = sort_type or ""
+        self.numeric = "n" in sort_type
+        self.case_insensitive = "i" in sort_type
         self.header = header
-        self.gen_keys = gen_keys
-        self.case_sensitive = False # TODO
         self.deterministic = deterministic
-        self.multisort = multisort
-        self.n_keys = 0
-        self.desc = False if (order and "desc" in order) else True
-        self.err = 0
-        self.sort_nr = 0
-        self.A = {}
-        self.TieBack = {}
-        self.header_unset = self.header is not None and self.header
-        self.has_started_sort_key = False
-        self.sort_key = ""
-        self.max_nf = 0
-        self._R = {}
-        self.NF = 0
-        self.f = 0
-        self.R = 0
-        self.C = 0
-        self.RCounts = {}
-        self.CCounts = {}
-        self.max_len = 0
-        self.CharIdxCounts = {}
-        self.ValsArr = {}
+        self.keys = [k.strip() for k in re.split(r",+", keys or "1") if k.strip()]
+        if not self.keys:
+            self.keys = ["1"]
+        self.gen_keys = any(k != "NF" and (not k.isdigit() or len(k) > 3) for k in self.keys)
 
-        if self.multisort:
-            pass
-        elif self.keys and self.keys.strip() != "":
-            KeysInitial = [x.strip() for x in self.keys.split(',')]
-            for i, key in enumerate(KeysInitial):
-                if len(key) == 0:
-                    continue
-                elif (not key.isdigit() or len(key) > 3):
-                    self.gen_keys = True
-                else:
-                    self.Keys[i] = int(key) - 1
+    def _resolve_header_keys(self, header_fields: Sequence[str]) -> List[object]:
+        resolved: List[object] = []
+        for pattern in self.keys:
+            if pattern == "NF":
+                resolved.append("NF")
+                continue
+            rx = re.compile("^(\"|')*" + pattern.lower())
+            for index, field in enumerate(header_fields, start=1):
+                if rx.search(field.lower()):
+                    resolved.append(index)
+                    break
+        if not resolved:
+            raise SortKeyError("No key patterns provided matched header")
+        return resolved
+
+    def _sort_key(self, fields: Sequence[str], key_fields: Sequence[object]) -> Tuple[str, int]:
+        """The joined key and how many field values it holds."""
+        values = []
+        for kf in key_fields:
+            index = len(fields) if kf == "NF" else kf
+            if not index:
+                continue
+            value = fields[index - 1] if index <= len(fields) else ""
+            values.append(value.lower() if self.case_insensitive else value)
+        if self.deterministic:
+            used = {kf for kf in key_fields if kf != "NF"}
+            values.extend(v for i, v in enumerate(fields, start=1) if i not in used)
+        return self.key_separator.join(values), len(values)
+
+    def sort_lines(self, lines: Sequence[str]) -> List[str]:
+        lines = [line.rstrip("\n").rstrip("\r") for line in lines]
+        lines = [line for line in lines if line.strip()]
+        header_line = None
+        if lines and (self.header or self.gen_keys):
+            header_line, lines = lines[0], lines[1:]
+        if self.gen_keys:
+            key_fields = self._resolve_header_keys(split_fields(header_line, self.field_separator))
         else:
-            self.Keys[1] = 0
-            self.n_keys = 1
+            key_fields = ["NF" if k == "NF" else int(k) for k in self.keys]
 
-        if self.sort_type and self.sort_type.startswith("numeric"):
-            n = 1
-            n_re = "^[[:space:]]*\\$?[[:space:]]?-?\\$?([0-9]{,3},)*[0-9]*\\.?[0-9]+((E|e)(\\+|-)?[0-9]+)?"
-            f_re = "^[[:space:]]*-?[0-9]\.[0-9]+(E|e)(\\+|-)?[0-9]+[[:space:]]*$"
+        entries = []
+        for line in lines:
+            key, n_values = self._sort_key(split_fields(line, self.field_separator), key_fields)
+            entries.append((key, n_values == 1 and not self.case_insensitive, line))
 
-    def run_sort(self):
-        self.handle_header()
-        self.process_lines()
-        if self.multisort:
-            self.do_multisort()
-        else:
-            self.qsort()
-
-    def handle_header(self):
-        if self.header_unset or self.gen_keys:
-            self.data_file.set_header()
-
-            if self.gen_keys:
-                for i in range(len(self.Keys)):
-                    key_pattern = self.Keys[i]
-
-                    if key_pattern == "NF":
-                        continue
-
-                    key_found = False
-
-                    if not self.case_sensitive:
-                        key_pattern = key_pattern.lower()
-                    
-                    for f in range(len(self.data_file.header)):
-                        field = self.data_file.header[f]
-                        if self.case_sensitive:
-                            field = field.lower()
-                        if key_pattern.startswith(field):
-                            self.Keys[i] = field
-                            self.KeyFields[f] = 1
-                            key_found = True
-                            break
-
-                    if not key_found:
-                        self.n_keys -= 1
-                        del self.Keys[i]
-
-                if self.n_keys < 1:
-                    raise Exception("No key patterns provided matched header")
-
-            self.header = self.data_file.header
-
-    def process_lines(self):
-        line = self.data_file.next_line()
-
-        while line:
-            sort_key = ""
-            has_started_sort_key = False
-
-            for i in range(self.n_keys):
-                if i not in self.Keys:
-                    continue
-                
-                kf = self.Keys[i]
-                if kf < 0:
-                    kf += self.data_file.max_nf
-                elif kf == "NF":
-                    kf = self.data_file.max_nf
-
-                sort_key += self.data_file.field_separator + line[kf] if has_started_sort_key else line[kf]
-
-                if not has_started_sort_key:
-                    has_started_sort_key = True
-
-            if self.deterministic:
-                for i in range(len(self.data_file.max_nf)):
-                    if i not in self.KeyFields:
-                        sort_key = self.data_file.field_separator + line[i] if has_started_sort_key else line[i]
-                        if not has_started_sort_key:
-                            has_started_sort_key = True
-
-
-            self.sort_nr += 1
-            self.A[self.sort_nr] = sort_key
-            self.TieBack[self.sort_nr] = line
-            line = self.data_file.next_line()
-
-    def do_multisort(self):
-        pass # TODO
-
-    def qsort(self):
-        if self.sort_type.startswith("n"):
-            if self.desc:
-                self.QSDN()
+        def compare(x, y) -> int:
+            if self.numeric:
+                result = compare_numeric(x[0], y[0])
             else:
-                self.QSAN()
-        else:
-            if self.desc:
-                self.QSD()
-            else:
-                self.QSA()
+                result = compare_default(x[0], y[0], x[1] and y[1])
+            return -result if self.descending else result
 
-        if self.header:
-            print(self.data_file.header)
-        for i in range(self.sort_nr):
-            print(self.TieBack[i])
-
-    def GetN(self, str):
-        if str in self.NS:
-            pass
-        elif str in self.n_re:
-            pass
-        else:
-            pass
-
-    def AdvChars(self, row, field, str, start):
-        r_count = 0
-        c_count = 0
-        len_chars = len(str) + start
-        for c in range(start, len_chars):
-            pass
-        if len_chars < 1:
-            pass
-        if len_chars > self.RCounts[row]: self.RCounts[row] = len_chars
-        if len_chars > self.CCounts[field]: self.CCounts[field] = len_chars
-        if len_chars > self.max_len: self.max_len = len_chars
-
-    def ContractCharVals(self, max_base):
-        for i in range(1, max_base + 1):
-            pass
-    def SA(self, A, TieBack, left, right):
-        if left >= right: return
-        self.SM(A, TieBack, left, left + int((right-left+1)*random.random()))
-        last = left
-        for i in range(left+1, right + 1):
-            pass
-        self.SM(A, TieBack, left, last)
-        self.SA(A, TieBack, left, last-1)
-        self.SA(A, TieBack, last+1, right)
-
-    def SM(self, A, TieBack, i, j):
-        t = A[i]
-        A[i] = A[j]
-        A[j] = t
-        t = TieBack[i]
-        TieBack[i] = TieBack[j]
-        TieBack[j] = t
-
-    def _OInit(self, low, high):
-        low = '\x07'
-        if low == "\a":
-            low = 0
-            high = 127
-        elif '\x80\x07' == "\a":
-            low = 128
-            high = 255
-        else:
-            low = 0
-            high = 255
-        for i in range(ord(low), ord(high) + 1):
-            pass
-
-    def sort(self):
-        with open(self.data_file, 'r') as f:
-            for line in f:
-                row = line.strip().split()
-                self.NF = len(row)
-                if self.multisort:
-                    self._R[len(self._R) + 1] = len(self._R) + 1
-                    for self.f in range(1, self.NF + 1):
-                        pass
-                if self.NF > self.max_nf: self.max_nf = self.NF
-                if self.header_unset or self.gen_keys:
-                    if self.gen_keys:
-                        pass
-                    if self.header_unset:
-                        self.header = line
-                        continue
-                    for i in range(1, self.n_keys + 1):
-                        pass
-                    if self.deterministic:
-                        pass
-                    self.sort_nr += 1
-                    self.A[self.sort_nr] = self.sort_key
-                    self.TieBack[self.sort_nr] = line
-        if self.err: return self.err
-        if not len(self._R): return 1
-        if self.multisort:
-            pass
-        else:
-            pass
-
-    def QSA(self, A, left, right):
-        if left >= right:
-            return
-
-        self.swap(A, self.TieBack, left, left + int((right-left+1)*rand()))
-        last = left
-
-        for i in range(left+1, right+1):
-            if (A[i] < A[left]):
-                last += 1
-                self.swap(A, self.TieBack, last, i)
-
-        self.swap(A, self.TieBack, left, last)
-        self.QSA(A, left, last-1)
-        self.QSA(A, last+1, right)
-
-    def QSAN(self, A,left,right):
-        if left >= right:
-            return
-
-        self.swap(A, self.TieBack, left, left + int((right-left+1)*rand()))
-        last = left
-
-        for i in range(left+1, right+1):
-            if (GetN(A[i]) < GetN(A[left])):
-                last += 1
-                self.swap(A, self.TieBack, last, i)
-            elif (GetN(A[i]) == GetN(A[left]) and NExt[A[i]] < NExt[A[left]]):
-                last += 1
-                self.swap(A, self.TieBack, last, i)
-
-        self.swap(A, self.TieBack, left, last)
-        self.QSAN(A, left, last-1)
-        self.QSAN(A, last+1, right)
-
-    def QSD(self, A,left,right):
-        if left >= right:
-            return
-
-        self.swap(A, self.TieBack, left, left + int((right-left+1)*rand()))
-        last = left
-
-        for i in range(left+1, right+1):
-            if (A[i] > A[left]):
-                self.swap(A, self.TieBack, ++last, i)
-
-        self.swap(A, self.TieBack, left, last)
-        self.QSD(A, left, last-1)
-        self.QSD(A, last+1, right)
-
-    def QSDN(self, A,left,right):
-        if left >= right:
-            return
-
-        self.swap(A, self.TieBack, left, left + int((right-left+1)*rand()))
-        last = left
-
-        for i in range(left+1, right+1):
-            if (GetN(A[i]) > GetN(A[left])):
-                last += 1
-                self.swap(A, self.TieBack, last, i)
-            elif (GetN(A[i]) == GetN(A[left]) and NExt[A[i]] > NExt[A[left]]):
-                last += 1
-                self.swap(A, self.TieBack, last, i)
-
-        self.swap(A, self.TieBack, left, last)
-        self.QSDN(A, left, last-1)
-        self.QSDN(A, last+1, right)
-
-    def swap(self, A, TieBack, i,j):
-        temp = A[i]
-        A[i] = self.A[j]
-        A[j] = temp
-        temp = TieBack[i]
-        TieBack[i] = TieBack[j]
-        TieBack[j] = temp
-
+        entries.sort(key=functools.cmp_to_key(compare))
+        out = [line for _key, _single, line in entries]
+        return ([header_line] if header_line is not None else []) + out

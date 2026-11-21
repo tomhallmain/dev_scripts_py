@@ -1,6 +1,7 @@
 import click
 import functools
 import os
+import re
 import sys
 
 from scripts.case import TextCaseConverter
@@ -8,6 +9,7 @@ from scripts.cli_arg_parse_utils import (
     CliArgContext,
     EXTRA_ARG_WARN_FIRST_FILE_ONLY,
     PathCandidatePredicate,
+    parse_non_negative_int_arg,
     regex_test_match,
     validate_positive_key_field,
 )
@@ -152,20 +154,72 @@ def commands(ctx, show_all):
         ))
 
 @cli.command()
-@wip
-def agg():
+@click.argument("args", nargs=-1, required=False)
+@click.option('--field-sep', '-s', default=None, help="Override the inferred field separator")
+@click.option('--header', '-h', 'header', is_flag=True,
+              help="First row is a header; summary rows get a label column")
+def agg(args, field_sep, header):
     """
-    Aggregate field-based text data.
+    Aggregate rows and columns: ``[FILE] [R_AGGS] [C_AGGS]``, or the same without FILE on stdin.
+
+    Each is a comma-separated list of ``OP`` or ``OP|all`` or ``OP|START..END`` with OP one of
+    ``+ - * /`` or ``m``/``mean``; ``0`` turns an axis off. Default: ``+|all`` on both axes.
+
+    Example::
+
+        ds . agg data.csv '+|all,mean|2..4' 0
+        cat data.txt | ds . agg 0 'mean|all' --header
     """
-    click.echo("Not yet implemented.")
+    from scripts.agg import Agg, AggError
+    from scripts.field_rows import read_rows
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        extra_arg_warn=(3, "Warning: ignoring {extra} extra argument(s) after FILE, R_AGGS and C_AGGS."),
+        field_separator=field_sep,
+    )
+    positional = list(ctx.args[1 if ctx.resolved_path else 0:])
+    r_aggs = positional[0] if len(positional) > 0 and positional[0] else None
+    c_aggs = positional[1] if len(positional) > 1 and positional[1] else None
+    try:
+        aggregator = Agg(r_aggs, c_aggs, header=header)
+    except AggError as e:
+        raise click.ClickException(str(e)) from e
+    data_file = ctx.to_data_file()
+    if data_file.n_rows == 0:
+        return
+    if field_sep is None:
+        try:
+            field_sep = data_file.get_field_separator()
+        except Exception as e:
+            raise click.ClickException(
+                f"could not infer the field separator ({e}); pass --field-sep") from e
+    ofs = field_sep if field_sep and field_sep.strip() else " "
+    for row in aggregator.run(read_rows(data_file.file_path, field_sep)):
+        click.echo(ofs.join(row))
 
 @cli.command()
-@wip
-def asgn():
+@click.argument("args", nargs=-1, required=False)
+def asgn(args):
     """
-    Print lines matching assignment pattern.
+    Print ``lineno:line`` for lines containing an assignment (``name = value``).
+
+    Optional ``FILE`` or stdin.
+
+    Example:  ds . asgn config.sh
     """
-    click.echo("Not yet implemented.")
+    from scripts.assignments import assignment_lines
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        extra_arg_warn=EXTRA_ARG_WARN_FIRST_FILE_ONLY,
+    )
+    if args and not ctx.resolved_path and not ctx.stdin_text:
+        raise click.ClickException(f"not a file: {args[0]}")
+    data_file = ctx.to_data_file()
+    with open(data_file.file_path, encoding="utf-8", errors="replace") as f:
+        for line in assignment_lines(f):
+            click.echo(line)
 
 @cli.command()
 @click.argument('tocase', default="pc")
@@ -961,7 +1015,6 @@ def unicode_cmd(args):
 @cli.command()
 @click.argument("args", nargs=-1, required=False)
 @click.option('--print-bases', '-p', is_flag=True, help="Include base nodes in output")
-@wip
 def graph(args, print_bases):
     """
     Extract graph relationships from DAG base data: optional ``FILE`` or stdin.
@@ -1066,15 +1119,49 @@ def pivot(args, y_keys, x_keys, z_keys, agg_type, gen_keys):
 
 
 @cli.command()
-@wip
-def hist():
+@click.argument("args", nargs=-1, required=False)
+@click.option('--field-sep', '-s', default=None, help="Override the inferred field separator")
+@click.option('--header', '-h', 'header', is_flag=True,
+              help="First row is a header (default: detected when it has no numbers)")
+@click.option('--fields', '-f', default=None, help="Comma-separated 1-based fields to chart")
+def hist(args, field_sep, header, fields):
     """
-    Print histograms for numeric fields in data (reads from stdin).
+    Print a histogram per numeric field: ``[FILE] [N_BINS=10] [BAR_LEN=15]``, or stdin.
 
-    Example:  cat data.txt | ds . hist
+    Example::
+
+        ds . hist data.csv 5
+        cat data.txt | ds . hist --fields 2,3
     """
-    from scripts.hist import main as _hist_main
-    _hist_main()
+    from scripts.field_rows import read_rows
+    from scripts.hist import Histogram
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        extra_arg_warn=(3, "Warning: ignoring {extra} extra argument(s) after FILE, N_BINS and BAR_LEN."),
+        field_separator=field_sep,
+    )
+    numbers = [parse_non_negative_int_arg(a, descriptor=name)
+               for a, name in zip(ctx.args[1 if ctx.resolved_path else 0:], ("N_BINS", "BAR_LEN"))]
+    n_bins = numbers[0] if len(numbers) > 0 and numbers[0] else 10
+    bar_len = numbers[1] if len(numbers) > 1 and numbers[1] else 15
+    try:
+        field_list = [int(f) for f in fields.split(",") if f.strip()] if fields else None
+    except ValueError as e:
+        raise click.ClickException("--fields must be comma-separated field numbers") from e
+    data_file = ctx.to_data_file()
+    if data_file.n_rows == 0:
+        return
+    if field_sep is None:
+        try:
+            field_sep = data_file.get_field_separator()
+        except Exception as e:
+            raise click.ClickException(
+                f"could not infer the field separator ({e}); pass --field-sep") from e
+    histogram = Histogram(n_bins=n_bins, max_bar_len=bar_len, header=header, fields=field_list)
+    histogram.process_rows(read_rows(data_file.file_path, field_sep))
+    for line in histogram.render():
+        click.echo(line)
 
 
 # ---------------------------------------------------------------------------
@@ -1082,34 +1169,108 @@ def hist():
 # ---------------------------------------------------------------------------
 
 @cli.command(name="diff_fields", aliases=["df"])
-@click.argument('file1', type=click.Path(exists=True))
-@click.argument('file2', type=click.Path(exists=True))
-@click.argument('op', default='-')
-@click.option('--exclude-fields', '-e', default="0", help="Comma-separated field indices to exclude")
+@click.argument("args", nargs=-1, required=True)
+@click.option('--exclude-fields', '-e', default=None, help="Comma-separated 1-based fields passed through unchanged")
 @click.option('--header', '-h', is_flag=True, help="First row is a header")
-@click.option('--summary', is_flag=True, help="Print diff summary")
-@click.option('--summary-sort', is_flag=True, help="Sort the diff summary")
-@stub
-def diff_fields(file1, file2, op, exclude_fields, header, summary, summary_sort):
+@click.option('--precision', '-p', type=int, default=None, help="Decimal places for results")
+@click.option('--diff-list', type=click.Choice(["on", "only"]), default=None,
+              help="Also list non-trivial differences sorted by size (only: just the list)")
+@click.option('--diff-list-sort', type=click.Choice(["d", "a", "off"]), default="d", show_default=True)
+@click.option('--field-sep', '-s', default=None, help="Field separator for both files")
+def diff_fields(args, exclude_fields, header, precision, diff_list, diff_list_sort, field_sep):
     """
-    Elementwise diff of two datasets.
+    Elementwise diff of two datasets: ``FILE1 FILE2 [OP=-] [EXCLUDE_FIELDS]``.
 
-    Example:  ds . diff_fields a.csv b.csv - --header
+    With the second dataset on stdin: ``FILE1 [OP] [EXCLUDE_FIELDS]``. OP is one of
+    ``- + * / %``, ``b`` (binary), ``m`` (MAD), ``r`` (RMSD) or ``s`` (stats).
+
+    Example::
+
+        ds . diff_fields a.csv b.csv - 1 --header
+        cat b.csv | ds . df a.csv % --diff-list on
     """
-    from scripts.diff_fields import DiffFields
-    file1 = Utils.resolve_relative_path(file1)
-    file2 = Utils.resolve_relative_path(file2)
-    df = DiffFields(file1, file2, op, exclude_fields, header, summary=summary, summary_sort=summary_sort)
-    df.run()
+    from scripts.diff_fields import OPS, DiffFields, DiffFieldsError
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.PAIR_CHAIN_OR_STDIN_SECOND,
+        field_separator=field_sep,
+    )
+    resolution = ctx.resolve_join_style_paths(check_same_file_pair=False)
+    resolution.require_exactly_two_inputs(
+        message="diff_fields expects two FILE paths, or one FILE with the second input on stdin.")
+    remaining = list(resolution.remaining_args)
+    op = "-"
+    if remaining and remaining[0].lower() in OPS:
+        op = remaining.pop(0)
+    if remaining and exclude_fields is None:
+        exclude_fields = remaining.pop(0)
+    if remaining:
+        click.echo(click.style(
+            f"Warning: ignoring {len(remaining)} extra argument(s) after OP and EXCLUDE_FIELDS.",
+            fg="yellow"), err=True)
+    if resolution.stdin_replaces_second_file:
+        labels = (args[0], "PIPEDATA")
+    else:
+        labels = (args[0], args[1]) if args[0] != args[1] else ("FILE1", "FILE2")
+
+    df1, df2 = resolution.materialize_data_files(stdin_text=ctx.stdin_text, field_separator=field_sep)
+    try:
+        separators = []
+        for df in (df1, df2):
+            if field_sep is not None or df.n_rows == 0:
+                separators.append(field_sep)
+                continue
+            try:
+                separators.append(df.get_field_separator())
+            except Exception as e:
+                raise click.ClickException(
+                    f"could not infer the field separator of {df.name} ({e}); pass --field-sep") from e
+        differ = DiffFields(op, exclude_fields, header=header, precision=precision,
+                            diff_list=diff_list, diff_list_sort=diff_list_sort,
+                            left_label=labels[0], right_label=labels[1],
+                            field_separator=separators[0], right_field_separator=separators[1])
+        for line in differ.run(df1.read_raw_lines(), df2.read_raw_lines()):
+            click.echo(line)
+    except DiffFieldsError as e:
+        raise click.ClickException(str(e)) from e
+    finally:
+        resolution.cleanup_stdin_backed_data_files()
 
 
 @cli.command(name="fit")
-@stub
-def fit():
+@click.argument("args", nargs=-1, required=False)
+@click.option('--field-sep', '-s', default=None, help="Override the inferred field separator")
+@click.option('--buffer', '-b', type=int, default=None, help="Characters between columns (default 2)")
+@click.option('--buffer-char', default=None, help="First character of each column gap (default space)")
+def fit(args, field_sep, buffer, buffer_char):
     """
-    Fit fielded data in columns with dynamic width.
+    Fit fielded data in columns with dynamic width: optional ``FILE`` or stdin.
+
+    Number columns are right-aligned, text columns left-aligned.
+
+    Example::
+
+        ds . fit data.csv
+        cat data.txt | ds . fit --buffer-char '|'
     """
-    click.echo("Not yet ported.")
+    from scripts.field_rows import read_rows
+    from scripts.fit_columns import FitColumns
+
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        extra_arg_warn=EXTRA_ARG_WARN_FIRST_FILE_ONLY,
+        field_separator=field_sep,
+    )
+    data_file = ctx.to_data_file()
+    if field_sep is None:
+        try:
+            field_sep = data_file.get_field_separator()
+        except Exception as e:
+            raise click.ClickException(str(e)) from e
+    fitter = FitColumns(field_separator=field_sep, buffer=buffer, buffer_char=buffer_char)
+    for line in fitter.fit_rows(read_rows(data_file.file_path, field_sep)):
+        click.echo(line)
 
 
 @cli.command(name="reo")
@@ -1168,12 +1329,52 @@ def reo(args, idx, uniq, cased, field_sep):
 
 
 @cli.command(name="sortm", aliases=["s"])
-@stub
-def sortm():
+@click.argument("args", nargs=-1, required=False)
+@click.option('--field-sep', '-s', default=None, help="Override the inferred field separator")
+@click.option('--header', '-h', 'header', is_flag=True, help="Keep the first row first")
+@click.option('--deterministic', '-d', is_flag=True,
+              help="Break ties on the remaining fields (default when KEYS is omitted)")
+def sortm(args, field_sep, header, deterministic):
     """
-    Sort with inferred field separator (multi-char support).
+    Sort lines by fields: ``[FILE] [KEYS] [ORDER] [TYPE]``, or the same without FILE on stdin.
+
+    KEYS: comma-separated field indices or ``NF`` (default 1); any other value makes all
+    keys header patterns. ORDER: ``a`` or ``d``. TYPE: ``n`` numeric, ``i`` case-insensitive,
+    or both. Lines with equal keys keep their input order.
+
+    Example::
+
+        ds . sortm data.csv 2,3 d n
+        cat data.txt | ds . sortm 1 a i
     """
-    click.echo("Not yet ported.")
+    from scripts.fields_qsort import SortKeyError, SortM
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        extra_arg_warn=(4, "Warning: ignoring {extra} extra argument(s) after FILE, KEYS, ORDER and TYPE."),
+        field_separator=field_sep,
+    )
+    positional = list(ctx.args[1 if ctx.resolved_path else 0:]) + ["", "", ""]
+    keys, order, sort_type = positional[:3]
+    if not keys:
+        keys, deterministic = "1", True
+    data_file = ctx.to_data_file()
+    lines = data_file.read_raw_lines()
+    if not any(line.strip() for line in lines):
+        return
+    if field_sep is None:
+        try:
+            field_sep = data_file.get_field_separator()
+        except Exception as e:
+            raise click.ClickException(
+                f"could not infer the field separator ({e}); pass --field-sep") from e
+    try:
+        sorter = SortM(keys, order or "a", sort_type, field_separator=field_sep,
+                       header=header, deterministic=deterministic)
+        for line in sorter.sort_lines(lines):
+            click.echo(line)
+    except SortKeyError as e:
+        raise click.ClickException(str(e)) from e
 
 
 @cli.command(name="subsep")
@@ -1221,17 +1422,46 @@ def subsep(args, nomatch_handler, apply_to_fields, regex, escape, retain_pattern
 
 
 @cli.command(name="inferh")
-@stub
-def inferh():
+@click.argument("args", nargs=-1, required=False)
+@click.option('--field-sep', '-s', default=None, help="Override the inferred field separator")
+@click.option('--max-rows', type=int, default=100, show_default=True, help="Rows to analyze")
+@click.option('--verbose', '-v', is_flag=True, help="Print the header score")
+def inferh(args, field_sep, max_rows, verbose):
     """
-    Infer if headers are present in the first row of a file.
+    Infer whether the first row is a header: optional ``FILE`` or stdin.
+
+    Exits 0 if a header row is detected, 1 otherwise (also for fewer than two rows).
+
+    Example:  ds . inferh data.csv && echo has header
     """
-    click.echo("Not yet ported (still AWK).")
+    from scripts.infer_headers import header_score
+    if max_rows < 2:
+        raise click.ClickException("--max-rows must be at least 2")
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        extra_arg_warn=EXTRA_ARG_WARN_FIRST_FILE_ONLY,
+        field_separator=field_sep,
+    )
+    data_file = ctx.to_data_file()
+    lines = data_file.read_raw_lines()
+    score = None
+    if len(lines) >= 2:
+        if field_sep is None:
+            try:
+                field_sep = data_file.get_field_separator()
+            except Exception as e:
+                raise click.ClickException(
+                    f"could not infer the field separator ({e}); pass --field-sep") from e
+        score = header_score(lines, field_sep, max_rows=max_rows)
+    if verbose:
+        click.echo(f"header score: {score}")
+    if score is None or score <= 0:
+        sys.exit(1)
 
 
 @cli.command(name="cardinality")
 @click.argument("args", nargs=-1, required=False)
-@stub
 def cardinality(args):
     """
     Calculate cardinality (distinct values) per field.
@@ -1250,28 +1480,85 @@ def cardinality(args):
 
 
 @cli.command(name="prod")
-@click.argument('files', nargs=-1, required=True, type=click.Path(exists=True))
-@stub
+@click.argument('files', nargs=-1, required=False)
 def prod(files):
     """
-    Cartesian product of lines from multiple files.
+    Cartesian product of the lines of several inputs, joined by a space.
 
-    Example:  ds . prod set_a.txt set_b.txt
+    Each FILE is one set of lines; piped stdin is used as the first set.
+
+    Example::
+
+        ds . prod set_a.txt set_b.txt
+        cat set_a.txt | ds . prod set_b.txt
     """
     from scripts.product import product_main
-    product_main([Utils.resolve_relative_path(f) for f in files])
+    stdin_text = None if sys.stdin.isatty() else sys.stdin.read()
+    paths = []
+    for f in files:
+        path = Utils.resolve_relative_path(f)
+        if not Utils.isfile_with_retry(path):
+            raise click.ClickException(f"not a file: {f}")
+        paths.append(path)
+    if not paths and not stdin_text:
+        raise click.ClickException("prod requires at least one FILE or piped stdin")
+    product_main(paths, stdin_text=stdin_text, echo=click.echo)
 
 
 @cli.command(name="shape")
-@stub
-def shape():
+@click.argument("args", nargs=-1, required=False)
+@click.option('--field-sep', '-s', default=None, help="Override the inferred field separator")
+@click.option('--header', '-h', 'header', is_flag=True, help="First row is a header (names the fields)")
+@click.option('--tty-size', type=int, default=None, help="Output width (default: terminal width)")
+def shape(args, field_sep, header, tty_size):
     """
-    Print data shape by length or pattern (reads from stdin).
+    Distribution of line length or pattern matches: ``[FILE] [MEASURES] [FIELDS] [CHART_SIZE]``.
 
-    Example:  cat data.txt | ds . shape
+    MEASURES: comma-separated regexes (case-insensitive), default line length. FIELDS:
+    comma-separated field indices, default ``0`` (whole line). CHART_SIZE: number of chart
+    rows (default 15); ``0`` prints the stats only. Without FILE, data is read from stdin.
+
+    Example::
+
+        ds . shape data.csv 'error,warn' 0 20
+        cat app.log | ds . shape timeout
     """
-    from scripts.shape import shape_main
-    shape_main()
+    import shutil
+    from scripts.shape import Shape
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        extra_arg_warn=(4, "Warning: ignoring {extra} extra argument(s) after FILE, MEASURES, FIELDS and CHART_SIZE."),
+        field_separator=field_sep,
+    )
+    positional = list(ctx.args[1 if ctx.resolved_path else 0:]) + ["", "", ""]
+    measures, fields, chart_size = positional[:3]
+    data_file = ctx.to_data_file()
+    lines = data_file.read_raw_lines()
+    n_lines = sum(1 for line in lines if line.endswith("\n"))
+    if not n_lines:
+        sys.exit(1)
+    simple = False
+    print_lines = 15
+    if chart_size:
+        if re.fullmatch(r"-?\d+", chart_size):
+            simple = int(chart_size) == 0
+            print_lines = int(chart_size) or 15
+        else:
+            simple = True
+    span = n_lines // print_lines if print_lines > 0 else 0
+    if fields and fields != "0" and field_sep is None:
+        try:
+            field_sep = data_file.get_field_separator()
+        except Exception as e:
+            raise click.ClickException(
+                f"could not infer the field separator ({e}); pass --field-sep") from e
+    if tty_size is None:
+        tty_size = shutil.get_terminal_size((100, 24)).columns
+    renderer = Shape(measures or None, fields or None, span=span or 15, tty_size=tty_size,
+                     field_separator=field_sep, header=header, simple=simple)
+    for line in renderer.render(lines):
+        click.echo(line.rstrip())
 
 
 @cli.command(name="field_uniques", aliases=["u"])
@@ -1302,69 +1589,117 @@ def field_uniques(args, fields_spec, min_count, order):
 
 
 @cli.command(name="enti")
-@click.argument('filepath', type=click.Path(exists=True))
-@click.option('--sep', '-s', default=r'\s+', help="Separator pattern")
-@click.option('--min', '-m', 'min_count', default=0, help="Minimum count to display")
-@stub
-def enti(filepath, sep, min_count):
+@click.argument("args", nargs=-1, required=False)
+@click.option('--sep', '-s', default=" ", show_default=True,
+              help="Separator: a space splits on whitespace, one other character literally, longer is a regex")
+@click.option('--min', '-m', 'min_count', type=int, default=1, show_default=True,
+              help="Minimum count to display")
+@click.option('--order', '-o', type=click.Choice(["a", "d", "asc", "desc"]), default="a",
+              show_default=True, help="Sort by count ascending (a) or descending (d)")
+def enti(args, sep, min_count, order):
     """
-    Print text entities separated by a pattern.
+    Count text entities separated by a pattern: optional ``FILE`` or stdin.
+
+    Prints ``count entity`` per entity seen at least ``--min`` times, sorted by count.
 
     Example:  ds . enti data.txt --sep "," --min 2
     """
     from scripts.separated_entities import TextEntities
-    filepath = Utils.resolve_relative_path(filepath)
-    te = TextEntities(min_count=min_count, separator=sep)
-    te.process_file(filepath)
-    te.print_entities()
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.TESTED_FIRST_ARG,
+        extra_arg_warn=EXTRA_ARG_WARN_FIRST_FILE_ONLY,
+    )
+    data_file = ctx.to_data_file()
+    te = TextEntities(min_count=min_count, separator=sep, descending=order.startswith("d"))
+    te.process_file(data_file.file_path)
+    for line in te.entity_lines():
+        click.echo(line)
 
 
 @cli.command(name="diff")
-@click.argument('file1', type=click.Path(exists=True))
-@click.argument('file2', type=click.Path(exists=True))
+@click.argument("args", nargs=-1, required=True)
 @click.option('--suppress-common', '-s', is_flag=True, help="Suppress common lines")
 @click.option('--no-color', is_flag=True, help="Disable colorized output")
-@stub
-def diff_cmd(file1, file2, suppress_common, no_color):
+@click.option('--width', '-w', type=int, default=None, help="Output width (default: terminal width)")
+def diff_cmd(args, suppress_common, no_color, width):
     """
-    Side-by-side diff with colorized output.
+    Side-by-side diff of two files or strings, colorized on a terminal.
 
-    Example:  ds . diff old.txt new.txt
+    ``FILE1|STR1 FILE2|STR2``, or ``FILE2|STR2`` with the first input piped on stdin.
+    Changes in the amount of whitespace are ignored.
+
+    Example::
+
+        ds . diff old.txt new.txt
+        ds . diff 'a\\nb' 'a\\nc'
     """
     import shutil
-    import subprocess
-    file1 = Utils.resolve_relative_path(file1)
-    file2 = Utils.resolve_relative_path(file2)
+    from scripts.diff_color import literal_to_lines, side_by_side, text_to_lines
 
-    tty_width = shutil.get_terminal_size().columns
-    diff_args = ['diff', '--side-by-side', f'--width={tty_width}']
-    if suppress_common:
-        diff_args.append('--suppress-common-lines')
-    diff_args.extend([file1, file2])
+    def lines_of(value):
+        path = Utils.resolve_relative_path(value)
+        if Utils.isfile_with_retry(path):
+            with open(path, encoding="utf-8", errors="replace") as f:
+                return text_to_lines(f.read())
+        return literal_to_lines(value)
 
-    result = subprocess.run(diff_args, capture_output=True, text=True)
-    lines = result.stdout.splitlines()
-
-    if not lines:
-        click.echo("Files are identical.")
-        return
-
-    if no_color:
-        for line in lines:
-            click.echo(line)
+    stdin_text = None if sys.stdin.isatty() else sys.stdin.read()
+    if len(args) == 1 and stdin_text:
+        left, right = text_to_lines(stdin_text), lines_of(args[0])
+    elif len(args) == 2:
+        left, right = lines_of(args[0]), lines_of(args[1])
     else:
-        from scripts.diff_color import DiffColor
-        dc = DiffColor(tty_width // 2)
-        dc.color_diff(lines)
+        raise click.ClickException("diff takes two FILE|STR inputs, or one with the other piped on stdin")
+
+    if width is None:
+        width = shutil.get_terminal_size((100, 24)).columns
+    colour = not no_color and sys.stdout.isatty()
+    for line in side_by_side(left, right, width, suppress_common=suppress_common, colour=colour):
+        click.echo(line)
 
 
 @cli.command(name="inferk")
-@stub
-def inferk():
+@click.argument("args", nargs=-1, required=True)
+@click.option('--fs1', default=None, help="Field separator of the first file")
+@click.option('--fs2', default=None, help="Field separator of the second file")
+@click.option('--no-header', is_flag=True, help="Files have no header row")
+@click.option('--max-rows', type=int, default=50, show_default=True, help="Data rows sampled per file")
+def inferk(args, fs1, fs2, no_header, max_rows):
     """
-    Infer join fields between two text data files.
+    Infer join fields of two data files: ``FILE1 FILE2``, or ``FILE1`` with the second on stdin.
+
+    Prints ``k`` when both join on the same field, else ``k1 k2``. A header name shared by
+    both files wins; otherwise the columns with the most overlapping values.
+
+    Example:  ds . inferk users.csv orders.csv
     """
-    click.echo("Not yet ported (script has mixed AWK/Python syntax).")
+    from scripts.infer_join_fields import InferJoinError, infer_join_fields
+    ctx = CliArgContext.from_click(
+        tuple(args),
+        path_rule=PathCandidatePredicate.PAIR_CHAIN_OR_STDIN_SECOND,
+    )
+    resolution = ctx.resolve_join_style_paths(check_same_file_pair=False)
+    resolution.require_exactly_two_inputs(
+        message="inferk expects two FILE paths, or one FILE with the second input on stdin.")
+    df1, df2 = resolution.materialize_data_files(stdin_text=ctx.stdin_text)
+    try:
+        separators = []
+        for df, given in ((df1, fs1), (df2, fs2)):
+            if given is not None or df.n_rows == 0:
+                separators.append(given)
+                continue
+            try:
+                separators.append(df.get_field_separator())
+            except Exception as e:
+                raise click.ClickException(
+                    f"could not infer the field separator of {df.name} ({e}); pass --fs1/--fs2") from e
+        click.echo(infer_join_fields(df1.read_raw_lines(), df2.read_raw_lines(), *separators,
+                                     header=not no_header, max_rows=max_rows))
+    except InferJoinError as e:
+        raise click.ClickException(str(e)) from e
+    finally:
+        resolution.cleanup_stdin_backed_data_files()
 
 
 @cli.command(name="grepvi", aliases=["gvi"])

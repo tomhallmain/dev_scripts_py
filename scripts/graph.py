@@ -8,14 +8,21 @@ from typing import Callable, Iterable
 from scripts.DataFile import DataFile
 
 
-def backtrace(start, test_base, shoots):
-    if test_base in shoots:
-        return extend(backtrace(test_base, shoots[test_base], shoots), start)
-    return extend(test_base, start)
-
-
-def extend(branch, offshoot):
-    return f"{branch} {offshoot}"
+def backtrace(start, shoots):
+    """Return ``(path, None)`` with the path from the root base down to ``start``, or
+    ``(None, node)`` when the parent chain loops back to ``node``."""
+    chain = [start]
+    seen = {start}
+    node = shoots[start]
+    while True:
+        if node in seen:
+            return None, node
+        chain.append(node)
+        seen.add(node)
+        if node not in shoots:
+            break
+        node = shoots[node]
+    return " ".join(reversed(chain)), None
 
 
 class GraphDagBacktrace:
@@ -52,10 +59,11 @@ class GraphDagBacktrace:
 
         for shoot in shoots:
             if shoots[shoot] and (self.print_bases or shoot not in bases):
-                if shoot == shoots[shoot]:
-                    cycles[shoot] = 1
+                path, cycle_node = backtrace(shoot, shoots)
+                if path is None:
+                    cycles[cycle_node] = 1
                     continue
-                self.echo(backtrace(shoot, shoots[shoot], shoots))
+                self.echo(path)
 
         if cycles:
             self.echo(f"WARNING: {len(cycles)} cycles found!")
