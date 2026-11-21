@@ -11,7 +11,7 @@ if str(_ROOT) not in sys.path:
 
 @pytest.fixture(autouse=True)
 def _isolate_user_state(tmp_path_factory, monkeypatch):
-    """Keep every test away from the user's tool cache and global git config.
+    """Keep every test away from the user's tool cache, temp folder and global git config.
 
     Variables are set, not defaulted, so values exported in the developer's
     shell can't reach a test. The directory is outside the test's tmp_path,
@@ -21,6 +21,8 @@ def _isolate_user_state(tmp_path_factory, monkeypatch):
 
     state_dir = tmp_path_factory.mktemp("ds-user-state")
     monkeypatch.setenv("DS_CACHE_DIR", str(state_dir / "cache"))
+    # Copies of piped input, otherwise in the platform temp folder.
+    monkeypatch.setenv("DS_TEMP_DIR", str(state_dir / "tmp"))
     # Tests exercise the cache file itself, not the bypass.
     monkeypatch.delenv("DS_REFRESH_TOOL_CACHE", raising=False)
     # The in-process cache would otherwise carry results between tests.

@@ -2,7 +2,7 @@
 Convenience entry point for the full test suite: ``python run_tests.py``.
 
 Self-provisioning: if no virtual environment is active (venv or conda) when this
-runs, creates/reuses a ``.venv`` at the repo root, installs requirements.txt into
+runs, creates/reuses a ``.venv`` at the repo root, installs requirements-dev.txt into
 it, and runs pytest through that interpreter directly -- the portable equivalent
 of "activate the venv, then run tests", without needing a separate shell/batch
 script to do the activating. If a venv or conda env is already active, that one
@@ -40,7 +40,7 @@ def _ensure_venv_python() -> str:
         print(f"No active venv/conda env found -- creating one at {VENV_DIR}")
         venv.create(VENV_DIR, with_pip=True)
     subprocess.run(
-        [python, "-m", "pip", "install", "-q", "-r", os.path.join(REPO_ROOT, "requirements.txt")],
+        [python, "-m", "pip", "install", "-q", "-r", os.path.join(REPO_ROOT, "requirements-dev.txt")],
         check=True,
     )
     return python

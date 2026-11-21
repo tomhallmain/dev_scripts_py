@@ -4,6 +4,7 @@ import os
 import platform
 import re
 import sys
+import tempfile
 import time
 from typing import Optional, Tuple
 
@@ -55,11 +56,18 @@ class _GetchWindows:
 class Utils:
     DS_SEP = "@@@"
     DEBUG = True
-    TEMP_FILE_LOCATION = "/tmp/dev_scripts_py/"
+    # Overrides where piped input is staged (tests and the build's smoke test).
+    TEMP_DIR_ENV = "DS_TEMP_DIR"
     COMMON_FS = [' ', '\t', ',', ';', ':', '|']
     SINGLE_QUOTE = "'"
     DOUBLE_QUOTE = "\""
     START_DIR = None
+
+    @staticmethod
+    def temp_file_location() -> str:
+        """Folder for temporary copies of piped input: ``DS_TEMP_DIR``, else
+        ``dev_scripts_py`` in the platform's temp folder."""
+        return os.environ.get(Utils.TEMP_DIR_ENV) or os.path.join(tempfile.gettempdir(), "dev_scripts_py")
 
     @staticmethod
     def set_start_dir(start_dir):

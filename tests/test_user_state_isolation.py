@@ -48,3 +48,26 @@ def test_global_git_config_is_empty():
     # GIT_CONFIG_GLOBAL and would list the user's config here.
     result = subprocess.run(["git", "config", "--global", "--list"], capture_output=True, text=True)
     assert result.stdout == ""
+
+
+def test_piped_input_is_staged_in_isolated_temp_dir():
+    from scripts.DataFile import DataFile
+    from scripts.utils import Utils
+
+    isolated = Path(os.environ["DS_TEMP_DIR"])
+    assert Utils.temp_file_location() == str(isolated)
+    data_file = DataFile(None, stdin_text="a b\n")
+    try:
+        assert Path(data_file.file_path).parent == isolated
+    finally:
+        data_file.cleanup_temp_file()
+    assert not Path(data_file.file_path).exists()
+
+
+def test_default_temp_dir_is_the_platform_temp_folder(monkeypatch):
+    import tempfile
+
+    from scripts.utils import Utils
+
+    monkeypatch.delenv("DS_TEMP_DIR")
+    assert Utils.temp_file_location() == os.path.join(tempfile.gettempdir(), "dev_scripts_py")

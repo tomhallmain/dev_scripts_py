@@ -10,24 +10,29 @@ All commands are namespaced to `ds` so there should be little to no clashing wit
 
 ### Building the Executable
 
-To build a standalone `ds` executable that needs no Python, conda, or venv at runtime, run this with any Python 3:
+To build a standalone `dsp` executable that needs no Python, conda, or venv at runtime, run this with Python 3.11 (the version in `.python-version`, which the build checks):
 
 ```bash
 python build_exe.py
 ```
 
-This compiles the project with [Nuitka](https://nuitka.net) into a single native executable, `dist/ds` on macOS/Linux or `dist\ds.exe` on Windows, and smoke-tests it: `ds commands`, `ds version` and a sample `ds join`, run from your home directory with the tool cache in a temporary directory. Copy it somewhere on your PATH. The first build takes a few minutes; the script creates (or reuses) a dedicated `.venv-build` venv and installs `requirements-build.txt` (the runtime deps plus Nuitka) into it.
+This compiles the project with [Nuitka](https://nuitka.net) into a single native executable and smoke-tests it: `dsp commands`, `dsp version` and a sample `dsp join`, run from your home directory with the tool cache and temporary files in a scratch directory. Only a build that passes is copied to `dist/dsp` on macOS/Linux or `dist\dsp.exe` on Windows. Copy it somewhere on your PATH. The first build takes a few minutes; the script creates (or reuses) a dedicated `.venv-build` venv and installs `requirements-build.txt` (the runtime deps plus Nuitka, zstandard and psutil, no test packages) into it.
 
 - **C compiler required.** On macOS, install the Xcode Command Line Tools (`xcode-select --install`). On Windows, Nuitka uses Visual Studio Build Tools if installed, and otherwise downloads MinGW itself.
 - **Build on each OS** you want a binary for; Nuitka does not cross-compile. The binary targets the architecture of the Python that ran the build, so on Apple Silicon use a native arm64 Python (e.g. Homebrew's) rather than an Intel one.
-- **First run is slower.** The exe embeds the Python runtime and unpacks it once, on first run, into a folder under your user cache directory (`dev_scripts_py/unpacked/ds-<build time>`). Later runs reuse it. Each rebuild gets a new folder; old ones under `unpacked/` are safe to delete, as are any `dev_scripts_py/ds-<build time>` folders left by older builds.
+- **First run is slower.** The exe embeds the Python runtime and unpacks it once, on first run, into a folder under your user cache directory (`dev_scripts_py/unpacked/dsp-<build time>`). Later runs reuse it. Each rebuild gets a new folder, and the exe removes older builds' folders there in the background, except one a running `dsp` is using. On Windows the smoke test also unpacks to that real folder, which the first normal start then reuses.
+- **Waiting for memory.** Nuitka compresses the payload last, which can fail for lack of memory after the whole compile. With [app-release](https://github.com/tomhallmain/release-tools) installed, the build passes Nuitka its memory-wait plugin, which waits for enough free memory first; `--min-free-memory=<GiB>` sets the amount, 0 turns the wait off. Without app-release the build warns and does not wait.
 - **Build logs.** Each build times its steps and writes its log to `build/logs/build_exe-<build time>.log`; Nuitka's own output appears only in the console.
-- **Copies on other Macs.** The binary is ad-hoc signed, which is enough on the Mac that built it. A copy downloaded onto another Mac gets quarantined by Gatekeeper; clear that with `xattr -d com.apple.quarantine ds`.
+- **Copies on other Macs.** The binary is ad-hoc signed, which is enough on the Mac that built it. A copy downloaded onto another Mac gets quarantined by Gatekeeper; clear that with `xattr -d com.apple.quarantine dsp`.
 - **Using an existing environment.** `python build_exe.py --current-env` builds with the running interpreter instead, which needs `requirements-build.txt` installed. Nuitka bundles libraries from whichever environment runs the build, so a lean venv gives a smaller exe than a full conda env. In either mode, the embedded Python runtime is the one that ran `build_exe.py`.
-- **Version and build info.** The version comes from the `VERSION` file at the repo root and is shown in the executable's properties on Windows. Each build also writes `build/nuitka/build_info.json` (version, build time, Python and key package versions, and the commit it was built from, with a fingerprint of any uncommitted changes), which is bundled into the executable and shown by `ds version`.
+- **Version and build info.** The version comes from the `VERSION` file at the repo root and is shown in the executable's properties on Windows. Each build also writes `build/nuitka/build_info.json` (version, build time, Python and key package versions, and the commit it was built from, with a fingerprint of any uncommitted changes), which is bundled into the executable and shown by `dsp version`. It replaces the previous one only when the new exe has passed its smoke test and reached `dist/`.
 - **Repeating a build.** Each build records the build environment's `pip freeze` in `build/nuitka/build-requirements.lock.txt`. Keep a copy of a good one, and pass it with `python build_exe.py --lock=<file>` to install the build venv from it instead of `requirements-build.txt`. Delete `.venv-build` first for an exact copy, since packages missing from the lock file are not removed.
 
-The executable uses the directory it's invoked from as the working context, so you run it as `ds <command> ...`.
+The executable uses the directory it's invoked from as the working context, so you run it as `dsp <command> ...`.
+
+### Releasing
+
+Releases are made with [app-release](https://github.com/tomhallmain/release-tools) (installed with `pipx`), not with a script in this repo: `app-release <path to this checkout>`. It rebuilds `dist/dsp[.exe]` through `build_exe.py` when it is behind HEAD, then stages and publishes it as release `dsp <version>`; see its README for the options. Commit first, since it builds nothing while tracked files have uncommitted changes, and make the first run with `--no-upload`. Its own options (`--bump`, `--no-build`, `--no-upload`, ...) go to `app-release`; `build_exe.py` refuses them.
 
 Alternatively, for development, use one of the bundled wrappers, which call `python ds.py` with the current directory as the first argument:
 
@@ -49,7 +54,7 @@ The executable automatically uses the current directory as the working context.
 Install dev dependencies (including pytest), then run the suite from the repository root:
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 python -m pytest
 ```
 

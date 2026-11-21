@@ -1,5 +1,14 @@
+# The build venv: runtime deps (no test packages) plus the build tools.
 -r requirements.txt
+# Pinned to the versions the test suite passed with (2026-11-21), so the
+# build venv cannot drift from the development environment.
+click==8.1.7
+termcolor==2.4.0
 # Pinned to a known good release; raise it deliberately and rebuild to check.
 nuitka==4.2.2
 # Lets Nuitka compress the onefile payload; without it the exe is larger.
 zstandard
+# Lists running processes for the unpack cleanup in the exe, and lets the
+# memory-wait plugin (from app-release, not kept in this repo) read free memory
+# off Windows.
+psutil

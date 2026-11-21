@@ -1,0 +1,3 @@
+# Runtime deps plus the test runner; run_tests.py installs this.
+-r requirements.txt
+pytest>=7.0

@@ -75,8 +75,7 @@ app_info_cache*
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# pyenv
-.python-version
+# pyenv (.python-version is tracked: it names the build's Python)
 
 # pip
 pip-log.txt

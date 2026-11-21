@@ -78,18 +78,18 @@ class DataFile:
                 for line in f:
                     self.n_rows += 1
         else:
-            if not os.path.exists(Utils.TEMP_FILE_LOCATION):
-                os.makedirs(Utils.TEMP_FILE_LOCATION)
+            temp_dir = Utils.temp_file_location()
+            os.makedirs(temp_dir, exist_ok=True)
             if self._stdin_text is not None:
                 with tempfile.NamedTemporaryFile(
-                    "w", encoding="utf-8", prefix=Utils.TEMP_FILE_LOCATION, delete=False
+                    "w", encoding="utf-8", dir=temp_dir, prefix="ds-", delete=False
                 ) as temp_file:
                     temp_file.write(self._stdin_text)
                     self.file_path = temp_file.name
                 self.n_rows = len(self._stdin_text.splitlines()) if self._stdin_text else 0
                 Utils.debug_print("Created temp file from stdin_text: " + self.file_path, "DataFile")
             else:
-                with tempfile.NamedTemporaryFile('w', prefix=Utils.TEMP_FILE_LOCATION, delete=False) as temp_file:
+                with tempfile.NamedTemporaryFile('w', dir=temp_dir, prefix="ds-", delete=False) as temp_file:
                     for line in sys.stdin:
                         temp_file.write(line)
                         self.n_rows += 1
