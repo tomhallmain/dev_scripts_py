@@ -27,6 +27,8 @@ def run_git(
         ["git", *args],
         cwd=cwd,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         capture_output=capture_output,
         check=check,
     )

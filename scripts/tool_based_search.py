@@ -109,6 +109,8 @@ def _rg_scan(
         r = subprocess.run(
             cmd,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
@@ -143,6 +145,8 @@ def _rg_scan_hits(paths: Tuple[str, ...], pattern: str) -> tuple[int, dict[str, 
         r = subprocess.run(
             cmd,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
@@ -314,6 +318,8 @@ def _search_dirs_with_fd(search: str, binary: str, max_results: int) -> list[str
         r = subprocess.run(
             [binary, "-t", "d", search],
             text=True,
+            encoding="utf-8",
+            errors="replace",
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,

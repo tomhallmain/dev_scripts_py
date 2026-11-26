@@ -342,7 +342,9 @@ def line_cmd(seed_cmds: Optional[str], line_cmds: str, ifs: str, stdin_data: Opt
     if stdin_data is not None:
         src = stdin_data
     elif seed_cmds:
-        seed_res = subprocess.run(seed_cmds, shell=True, text=True, capture_output=True, check=False)
+        seed_res = subprocess.run(
+            seed_cmds, shell=True, text=True, encoding="utf-8", errors="replace", capture_output=True, check=False
+        )
         if seed_res.returncode != 0:
             raise click.ClickException(seed_res.stderr.strip() or "seed_cmds failed.")
         src = seed_res.stdout
@@ -358,7 +360,7 @@ def line_cmd(seed_cmds: Optional[str], line_cmds: str, ifs: str, stdin_data: Opt
         env = dict(os.environ)
         env["line"] = item
         result = subprocess.run(
-            cmd, shell=True, text=True, env=env, check=False, capture_output=True
+            cmd, shell=True, text=True, encoding="utf-8", errors="replace", env=env, check=False, capture_output=True
         )
         if result.stdout:
             click.echo(result.stdout, nl=False)

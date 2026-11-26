@@ -89,7 +89,9 @@ class DataFile:
                 self.n_rows = len(self._stdin_text.splitlines()) if self._stdin_text else 0
                 Utils.debug_print("Created temp file from stdin_text: " + self.file_path, "DataFile")
             else:
-                with tempfile.NamedTemporaryFile('w', dir=temp_dir, prefix="ds-", delete=False) as temp_file:
+                with tempfile.NamedTemporaryFile(
+                    'w', encoding="utf-8", errors="backslashreplace", dir=temp_dir, prefix="ds-", delete=False
+                ) as temp_file:
                     for line in sys.stdin:
                         temp_file.write(line)
                         self.n_rows += 1
@@ -100,7 +102,7 @@ class DataFile:
         return Utils.get_file_extension(self.file_path) if self.file_path else None
 
     def read(self):
-        return open(self.file_path, 'r')
+        return open(self.file_path, 'r', encoding="utf-8", errors="replace")
 
     def read_raw_lines(self):
         """Full text lines as in the file (newlines preserved), UTF-8. For non-field-aware tools."""
