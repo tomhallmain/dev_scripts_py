@@ -227,6 +227,8 @@ class DuplicateRemover:
                 return f
             count = sum([index_not_present, normal_file_chars, starts_with_alpha])
             candidate_dict[f] = count
+        if not candidate_dict: # every file in the group no longer exists
+            return None
         highest_count = max(candidate_dict.values())
         for f, count in candidate_dict.items():
             if count == highest_count:
@@ -236,11 +238,16 @@ class DuplicateRemover:
     def save_report(self):
         # Create a list of tuples with best duplicate file and its duplicates
         duplicates_list = [(self._select_best_duplicate(files), files) for files in self.duplicates.values()]
+        # No best duplicate means fewer than two files in the group still exist
+        duplicates_list = [(best, files) for best, files in duplicates_list if best is not None]
         # Sort the list based on the filename of the best duplicate
         sorted_duplicates_list = sorted(duplicates_list, key=lambda x: os.path.basename(x[0]))
         # Create a report
         report_path = os.path.join(self.source_folder, 'duplicates_report.txt')
-        with open(report_path, 'w') as f:
+        # Paths can hold characters the locale code page can't encode, or lone
+        # surrogates (undecodable POSIX bytes, unpaired UTF-16 on Windows) that
+        # strict UTF-8 rejects; backslashreplace writes those as escapes.
+        with open(report_path, 'w', encoding='utf-8', errors='backslashreplace') as f:
             f.write("DUPLICATES REPORT FOR DIR: " + self.source_folder + "\n")
             for best, duplicates in sorted_duplicates_list:
                 f.write(f'Best duplicate: {best}\n')

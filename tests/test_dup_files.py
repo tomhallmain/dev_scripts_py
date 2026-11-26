@@ -109,3 +109,72 @@ def test_handle_duplicates_alphabetical_order_single_basename_per_group(tmp_path
     assert output.find("aardvark.dat") < output.find("zebra.dat"), (
         "Groups should appear in alphabetical basename order"
     )
+
+
+# ---------------------------------------------------------------------------
+# save_report: encoding and stale entries
+# ---------------------------------------------------------------------------
+
+def _read_report(tmp_path) -> str:
+    return (tmp_path / "duplicates_report.txt").read_bytes().decode("utf-8")
+
+
+def test_save_report_writes_non_ascii_paths_as_utf8(tmp_path):
+    """Paths outside the locale code page (e.g. cp1252 on Windows) must not
+    raise UnicodeEncodeError; the report is written as UTF-8."""
+    names = ["caf\u00e9.txt", "\u65e5\u672c\u8a9e.txt", "\u010desk\u00fd \u0151.txt"]
+    for name in names:
+        (tmp_path / name).write_bytes(b"same content")
+
+    remover = DuplicateRemover(str(tmp_path))
+    assert remover.find_duplicates()
+    remover.save_report()
+
+    report = _read_report(tmp_path)
+    for name in names:
+        assert name in report
+
+
+@pytest.mark.skipif(os.name != "posix", reason="needs a filename made of undecodable bytes")
+def test_save_report_escapes_undecodable_filename(tmp_path):
+    """An undecodable byte in a POSIX filename becomes a lone surrogate in the
+    str path, which strict UTF-8 can't encode; the report escapes it instead."""
+    try:
+        with open(os.path.join(os.fsencode(tmp_path), b"bad\xff.txt"), "wb") as f:
+            f.write(b"same content")
+    except OSError:
+        pytest.skip("filesystem rejects non-UTF-8 filenames")
+    (tmp_path / "good.txt").write_bytes(b"same content")
+
+    remover = DuplicateRemover(str(tmp_path))
+    assert remover.find_duplicates()
+    remover.save_report()
+
+    report = _read_report(tmp_path)
+    assert "bad\\udcff.txt" in report
+    assert "good.txt" in report
+
+
+def test_save_report_skips_groups_with_stale_entries(tmp_path):
+    """Files deleted after hashing must not crash the report. A group left
+    with one existing file, or none, is omitted; other groups are kept."""
+    for name in ("keep_a.txt", "keep_b.txt"):
+        (tmp_path / name).write_bytes(b"group 1")
+    for name in ("one_left_a.txt", "one_left_b.txt"):
+        (tmp_path / name).write_bytes(b"group 2")
+    for name in ("gone_a.txt", "gone_b.txt"):
+        (tmp_path / name).write_bytes(b"group 3")
+
+    remover = DuplicateRemover(str(tmp_path))
+    assert remover.find_duplicates()
+    (tmp_path / "one_left_b.txt").unlink()
+    (tmp_path / "gone_a.txt").unlink()
+    (tmp_path / "gone_b.txt").unlink()
+
+    remover.save_report()
+
+    report = _read_report(tmp_path)
+    assert "keep_a.txt" in report and "keep_b.txt" in report
+    assert "one_left" not in report
+    assert "gone_" not in report
+    assert "None" not in report
